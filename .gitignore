@@ -1,0 +1,26 @@
+.DS_Store
+
+# Binaries (built by `go build`)
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary and profiling output
+*.test
+*.out
+
+# Coverage output (common defaults)
+coverage.out
+*.coverprofile
+
+# Go workspace files
+go.work.sum
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
