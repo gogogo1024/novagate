@@ -11,6 +11,13 @@ import (
 )
 
 func HandleConn(ctx context.Context, conn net.Conn, router *Router) error {
+	so := defaultServeOptions()
+	return handleConn(ctx, conn, router, so.idleTimeout, so.writeTimeout)
+}
+
+var errIdleTimeout = errors.New("novagate: idle timeout")
+
+func handleConn(ctx context.Context, conn net.Conn, router *Router, idleTimeout time.Duration, writeTimeout time.Duration) error {
 	if router == nil {
 		return errors.New("novagate: nil router")
 	}
@@ -23,13 +30,16 @@ func HandleConn(ctx context.Context, conn net.Conn, router *Router) error {
 	defer state.cc.Release(len(state.buf))
 
 	for {
-		if err := readIntoBuffer(conn, state); err != nil {
+		if err := readIntoBuffer(conn, state, idleTimeout); err != nil {
 			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			if errors.Is(err, errIdleTimeout) {
 				return nil
 			}
 			return err
 		}
-		if err := processBufferedFrames(ctx, conn, state, router); err != nil {
+		if err := processBufferedFrames(ctx, conn, state, router, writeTimeout); err != nil {
 			return err
 		}
 	}
@@ -41,8 +51,12 @@ type connHandlerState struct {
 	tmp []byte
 }
 
-func readIntoBuffer(conn net.Conn, state *connHandlerState) error {
-	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Minute))
+func readIntoBuffer(conn net.Conn, state *connHandlerState, idleTimeout time.Duration) error {
+	if idleTimeout > 0 {
+		_ = conn.SetReadDeadline(time.Now().Add(idleTimeout))
+	} else {
+		_ = conn.SetReadDeadline(time.Time{})
+	}
 
 	n, err := conn.Read(state.tmp)
 	if n > 0 {
@@ -51,10 +65,15 @@ func readIntoBuffer(conn net.Conn, state *connHandlerState) error {
 		}
 		state.buf = append(state.buf, state.tmp[:n]...)
 	}
+	if err != nil {
+		if ne, ok := err.(net.Error); ok && ne.Timeout() && idleTimeout > 0 {
+			return errIdleTimeout
+		}
+	}
 	return err
 }
 
-func processBufferedFrames(ctx context.Context, conn net.Conn, state *connHandlerState, router *Router) error {
+func processBufferedFrames(ctx context.Context, conn net.Conn, state *connHandlerState, router *Router, writeTimeout time.Duration) error {
 	consumed := 0
 
 	for {
@@ -66,7 +85,7 @@ func processBufferedFrames(ctx context.Context, conn net.Conn, state *connHandle
 			break
 		}
 
-		if err := handleFrame(ctx, conn, state, router, frame); err != nil {
+		if err := handleFrame(ctx, conn, state, router, frame, writeTimeout); err != nil {
 			return err
 		}
 		consumed += frameLen
@@ -80,7 +99,7 @@ func processBufferedFrames(ctx context.Context, conn net.Conn, state *connHandle
 	return nil
 }
 
-func handleFrame(ctx context.Context, conn net.Conn, state *connHandlerState, router *Router, frame *protocol.Frame) error {
+func handleFrame(ctx context.Context, conn net.Conn, state *connHandlerState, router *Router, frame *protocol.Frame, writeTimeout time.Duration) error {
 	oneWay := (frame.Flags & protocol.FlagOneWay) != 0
 
 	if !state.cc.Allow() {
@@ -121,10 +140,19 @@ func handleFrame(ctx context.Context, conn net.Conn, state *connHandlerState, ro
 	}
 
 	out := protocol.Encode(&protocol.Frame{Flags: outFlags, Body: outBody})
-	return writeAll(conn, out)
+	return writeAll(conn, out, writeTimeout)
 }
 
-func writeAll(conn net.Conn, data []byte) error {
+func writeAll(conn net.Conn, data []byte, writeTimeout time.Duration) error {
+	if writeTimeout > 0 {
+		_ = conn.SetWriteDeadline(time.Now().Add(writeTimeout))
+		defer func() {
+			_ = conn.SetWriteDeadline(time.Time{})
+		}()
+	} else {
+		_ = conn.SetWriteDeadline(time.Time{})
+	}
+
 	for len(data) > 0 {
 		n, err := conn.Write(data)
 		if err != nil {

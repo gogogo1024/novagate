@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"log"
 	"os"
 	"path/filepath"
@@ -44,11 +43,24 @@ func main() {
 		return
 	}
 
-	addr := flag.String("addr", ":9000", "listen address")
-	flag.Parse()
-
-	log.Printf("novagate listening on %s", *addr)
-	if err := novagate.ListenAndServe(*addr, setup); err != nil {
+	cfg, err := loadConfig()
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf(
+		"config: addr=%s(%s) idle-timeout=%s(%s) write-timeout=%s(%s) config=%s(loaded=%t) dotenv=%s(loaded=%t)",
+		cfg.addr, cfg.addrSource,
+		cfg.idleTimeout, cfg.idleTimeoutSource,
+		cfg.writeTimeout, cfg.writeTimeoutSource,
+		cfg.configPath, cfg.configLoaded,
+		cfg.dotenvPath, cfg.dotenvLoaded,
+	)
+	log.Printf("novagate listening on %s", cfg.addr)
+	if err := novagate.ListenAndServeWithOptions(
+		cfg.addr,
+		setup,
+		cfg.serveOptions()...,
+	); err != nil {
 		log.Fatal(err)
 	}
 }

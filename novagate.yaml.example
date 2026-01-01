@@ -1,0 +1,10 @@
+# Example configuration for Novagate.
+# Copy this file to ./novagate.yaml (or pass -config /path/to/novagate.yaml).
+
+server:
+  addr: ":9000"
+
+timeouts:
+  # Use Go duration format: 60s, 5m, 1h, etc.
+  idle: "5m"
+  write: "10s"

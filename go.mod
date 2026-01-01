@@ -2,7 +2,11 @@ module github.com/gogogo1024/novagate
 
 go 1.25.5
 
-require github.com/cloudwego/kitex v0.15.4
+require (
+	github.com/cloudwego/kitex v0.15.4
+	github.com/joho/godotenv v1.5.1
+	gopkg.in/yaml.v3 v3.0.1
+)
 
 require (
 	github.com/bytedance/gopkg v0.1.3 // indirect
@@ -23,5 +27,4 @@ require (
 	golang.org/x/text v0.14.0 // indirect
 	google.golang.org/genproto v0.0.0-20210513213006-bf773b8c8384 // indirect
 	google.golang.org/protobuf v1.33.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

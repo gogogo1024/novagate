@@ -18,6 +18,16 @@ coverage.out
 # Go workspace files
 go.work.sum
 
+# mise (local overrides)
+.mise.local.toml
+
+# dotenv
+.env
+.env.*
+
+# Local runtime config (copy from novagate.yaml.example)
+novagate.yaml
+
 # Editor/IDE
 .vscode/
 .idea/
