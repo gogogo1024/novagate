@@ -103,6 +103,8 @@ mise exec -- go run ./cmd/server
 
 你可以直接复制示例配置文件：[`novagate.yaml.example`](novagate.yaml.example) → `novagate.yaml`。
 
+建议不要把 `novagate.yaml` 提交到 git（通常是本地/环境配置；本仓库默认也会忽略它），只提交 `novagate.yaml.example` 作为模板。
+
 ```yaml
 server:
     addr: ":9000"
