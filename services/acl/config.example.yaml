@@ -1,0 +1,19 @@
+# Example config for the ACL service.
+
+server:
+  # Hertz listen address
+  addr: ":8888"
+  # Debug endpoint: GET /v1/acl/stats
+  enable_stats: true
+
+redis:
+  # Leave empty to use in-memory store
+  addr: "127.0.0.1:6379"
+  password: ""
+  db: 0
+  key_prefix: "acl:"
+
+  # Go duration strings
+  dial_timeout: "1s"
+  read_timeout: "1s"
+  write_timeout: "1s"

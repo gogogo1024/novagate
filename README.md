@@ -57,6 +57,10 @@ Novagate 是一个基于 TCP 长连接的轻量协议网关骨架：
 - `internal/`：Go 侧默认实现的内部组件（dispatcher/codec/limits/transport 等）
 - `docs/`：协议与架构决策文档
 
+## 子服务
+
+- ACL HTTP 子服务（用于 RAG/检索场景的逐用户权限判定）：[services/acl/README.md](services/acl/README.md)
+
 ## 快速开始
 
 ### 使用 mise 管理 Go 版本
@@ -65,25 +69,12 @@ Novagate 是一个基于 TCP 长连接的轻量协议网关骨架：
 
 ```bash
 mise install
-```
-
-后续命令建议通过 `mise exec -- ...` 执行，确保使用一致的 Go 版本。
-
-### 其他常用命令也建议用 mise
-
 凡是依赖 Go 工具链的命令，都可以统一用 `mise exec -- go ...` 来跑，例如：
 
 ```bash
-# 格式化
-mise exec -- gofmt -w .
-
-# 只跑 protocol 包测试
-mise exec -- go test ./protocol -run TestFrameEncodeDecodeRoundTrip -count=1
 
 # 基础静态检查
 mise exec -- go vet ./...
-
-# 依赖整理
 mise exec -- go mod tidy
 ```
 
