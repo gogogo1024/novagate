@@ -1,0 +1,30 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up mise
+        uses: jdx/mise-action@v2
+        with:
+          cache: true
+
+      - name: Install toolchain
+        run: mise install
+
+      - name: Go vet
+        run: mise exec -- go vet ./...
+
+      - name: Go test
+        run: mise exec -- go test ./...
+
+      - name: Validate command mappings
+        run: mise exec -- go run ./cmd/validate-commands

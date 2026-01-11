@@ -69,10 +69,11 @@ Novagate 是一个基于 TCP 长连接的轻量协议网关骨架：
 
 ```bash
 mise install
+```
+
 凡是依赖 Go 工具链的命令，都可以统一用 `mise exec -- go ...` 来跑，例如：
 
 ```bash
-
 # 基础静态检查
 mise exec -- go vet ./...
 mise exec -- go mod tidy
@@ -82,6 +83,28 @@ mise exec -- go mod tidy
 
 ```bash
 mise exec -- go test ./...
+```
+
+### 命令一致性校验（可选）
+
+默认只校验 3 个文件：`protocol/commands.go`、`cmd/server/main.go`、`internal/service/registry.go`。
+
+```bash
+mise exec -- go run ./cmd/validate-commands
+mise exec -- go run ./cmd/validate-commands -require-all
+```
+
+### Git hooks（pre-commit，可选）
+
+本仓库提供基于 `mise` 的 `pre-commit` hook：仅当 staged 里包含 Go 相关改动时，自动运行：
+
+- `mise exec -- go run ./cmd/validate-commands`
+- `mise exec -- go test ./...`
+
+安装：
+
+```bash
+./scripts/install-githooks.sh
 ```
 
 ### 启动服务端

@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+if ! command -v mise >/dev/null 2>&1; then
+  echo "pre-commit: mise not found. Install mise first (see README) or bypass with --no-verify." >&2
+  exit 1
+fi
+
+# Only run checks when Go-related files are staged.
+staged_files="$(git diff --cached --name-only)"
+if ! echo "$staged_files" | grep -Eq '(^go\.mod$|^go\.sum$|\.go$|^protocol/|^cmd/server/|^internal/service/|^internal/codec/|^internal/dispatcher/)' ; then
+  exit 0
+fi
+
+# Ensure toolchain exists (fast if already installed).
+mise install >/dev/null
+
+# Fast, targeted consistency check.
+mise exec -- go run ./cmd/validate-commands
+
+# Full tests are more expensive but catch regressions early.
+mise exec -- go test ./...
