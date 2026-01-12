@@ -11,7 +11,7 @@ fi
 
 # Only run checks when Go-related files are staged.
 staged_files="$(git diff --cached --name-only)"
-if ! echo "$staged_files" | grep -Eq '(^go\.mod$|^go\.sum$|\.go$|^protocol/|^cmd/server/|^internal/service/|^internal/codec/|^internal/dispatcher/)' ; then
+if ! echo "$staged_files" | grep -Eq '(^go\.mod$|^go\.sum$|\.go$|^protocol/.*\.go$|^cmd/server/.*\.go$|^internal/(service|codec|dispatcher)/.*\.go$)' ; then
   exit 0
 fi
 

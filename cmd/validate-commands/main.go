@@ -20,6 +20,7 @@ type issue struct {
 
 type patterns struct {
 	cmdDefRe             *regexp.Regexp
+	cmdDefDecimalRe      *regexp.Regexp
 	registerMethodRe     *regexp.Regexp
 	bridgeCallRe         *regexp.Regexp
 	routerRegisterRe     *regexp.Regexp
@@ -82,7 +83,8 @@ type cmdDefOcc struct {
 
 func defaultPatterns() patterns {
 	return patterns{
-		cmdDefRe:             regexp.MustCompile(`(?m)^\s*(Cmd[0-9A-Za-z_]+)\s+uint16\s*=\s*(0x[0-9a-fA-F]+|\d+)\s*$`),
+		cmdDefRe:             regexp.MustCompile(`(?m)^\s*(Cmd[0-9A-Za-z_]+)\s+uint16\s*=\s*(0x[0-9a-fA-F]+)\s*$`),
+		cmdDefDecimalRe:      regexp.MustCompile(`(?m)^\s*(Cmd[0-9A-Za-z_]+)\s+uint16\s*=\s*(\d+)\s*$`),
 		registerMethodRe:     regexp.MustCompile(`protocol\.RegisterFullMethodCommand\(\s*"[^"]+"\s*,\s*protocol\.(Cmd[0-9A-Za-z_]+)\s*\)`),
 		bridgeCallRe:         regexp.MustCompile(`\bbridge\(\s*protocol\.(Cmd[0-9A-Za-z_]+)\s*\)`),
 		routerRegisterRe:     regexp.MustCompile(`\br\.Register\(\s*protocol\.(Cmd[0-9A-Za-z_]+)\s*,`),
@@ -194,6 +196,7 @@ func scanFixedFile(path string, pat patterns, out *scanResult, byVal map[uint16]
 	s := string(b)
 
 	issues := scanCmdDefs(path, s, pat.cmdDefRe, out, byVal)
+	issues = append(issues, scanDecimalCmdDefs(path, s, pat.cmdDefDecimalRe)...)
 	scanRefs(path, s, pat.registerMethodRe, out.server.registered)
 	scanRefs(path, s, pat.bridgeCallRe, out.server.bridged)
 	scanRefs(path, s, pat.routerRegisterRe, out.server.bridged)
@@ -216,6 +219,23 @@ func scanCmdDefs(path, s string, re *regexp.Regexp, out *scanResult, byVal map[u
 		out.cmdVals[name] = val
 		out.cmdLoc[name] = where
 		byVal[val] = append(byVal[val], cmdDefOcc{name: name, loc: where})
+	}
+	return issues
+}
+
+func scanDecimalCmdDefs(path, s string, re *regexp.Regexp) []issue {
+	var issues []issue
+	for _, mi := range re.FindAllStringSubmatchIndex(s, -1) {
+		name := s[mi[2]:mi[3]]
+		raw := s[mi[4]:mi[5]]
+		where := loc{file: path, line: lineNumber(s, mi[0])}
+		issues = append(issues, issue{msg: fmt.Sprintf(
+			"%s:%d: protocol.%s must be a hex literal (0x....); got decimal %q",
+			where.file,
+			where.line,
+			name,
+			raw,
+		)})
 	}
 	return issues
 }

@@ -89,6 +89,8 @@ mise exec -- go test ./...
 
 默认只校验 3 个文件：`protocol/commands.go`、`cmd/server/main.go`、`internal/service/registry.go`。
 
+要求 `protocol/commands.go` 里的 `Cmd* uint16` 常量使用十六进制（`0x....`）以便稳定维护 ABI。
+
 ```bash
 mise exec -- go run ./cmd/validate-commands
 mise exec -- go run ./cmd/validate-commands -require-all
