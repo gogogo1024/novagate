@@ -1,0 +1,34 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: novagate-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - novagate-network
+
+  # Optional: Redis Insights for visualization
+  redis-insights:
+    image: redislabs/redisinsight:latest
+    container_name: novagate-redis-insights
+    ports:
+      - "5540:5540"
+    depends_on:
+      - redis
+    networks:
+      - novagate-network
+
+volumes:
+  redis-data:
+
+networks:
+  novagate-network:
+    driver: bridge

@@ -20,6 +20,10 @@
 - ACL 子模块：`cd services/acl && go test ./... && go run . -config ./config.example.yaml`。
 
 ## 项目内约定（写代码时优先遵循）
+- 协议实现约束（与 docs/protocol.md + 当前 Go 实现保持一致）：
+  - Frame Header 固定 8 字节：`Magic(0xCAFE)` + `Version(1)` + `Flags` + `Length(uint32, Body 长度)`；整数字段为 **Big Endian**。
+  - 当前仅支持 `Version=1`；`Length` 最大允许 **1MB**（超过会被拒绝）。
+  - Message 为 `Command(uint16) + RequestID(uint64) + Payload`；`RequestID` 用于同连接内并发/多路复用，响应需要回填同一个 `RequestID`。
 - Command 映射：生产建议开启 strict（见 protocol/mapper.go、cmd/server/main.go）。新增命令时：
   - 在 `protocol/commands.go` 增加 `CmdXXX`；
   - 在 `setup()` 调 `protocol.RegisterFullMethodCommand("Service.Method", CmdXXX)` 并 `protocol.SetStrictCommandMapping(true)`；
@@ -33,7 +37,12 @@
 ### 命令一致性校验（推荐在改动后跑）
 - `mise exec -- go run ./cmd/validate-commands`（只校验约定的 3 个文件：`protocol/commands.go`、`cmd/server/main.go`、`internal/service/registry.go`）
 - 可选更严格：`mise exec -- go run ./cmd/validate-commands -require-all`（要求每个定义的 `Cmd*` 都被桥接并有 dispatcher handler）
+- 命令常量风格：`Cmd* uint16` 必须使用 `0x...` 十六进制字面量（稳定 ABI）；支持行尾 `// comment`。
 - Flags 语义：`FlagEncrypted` 当前会被拒绝；`FlagOneWay` 不回写响应；响应会继承请求的 `RequestID`，并仅透传压缩位（见 protocol/compress.go、conn_handler.go）。
 - 连接资源控制：每连接有 buffer quota（默认 256KiB）+ token bucket 限速（见 conn_ctx.go），`handleConn` 通过 Read/Write deadline 实现 idle/write timeout（见 conn_handler.go）。
 - 配置优先级：`flag > env > yaml > default`；默认读取 `novagate.yaml`（不存在也允许）并加载本地 `.env`（见 cmd/server/config.go）。
 - Kitex 编解码：`internal/codec/MessageCodec` 读取 `msg.Tags()["novagate.flags"]` 写入 Frame flags，并在 Decode 时回填 tags：`novagate.command/request_id/flags`（便于上层观测/路由）。
+
+## ACL/RAG 对接（services/acl/，见 docs/acl-rag-contract.md）
+- 向量召回阶段只传 `doc_id`/引用，不要返回可读文本；必须先过 ACL 批量过滤，再去回源取文本，避免未授权泄露。
+- ACL 不可用时默认推荐 fail-closed（宁可少答，也不返回私有内容）。

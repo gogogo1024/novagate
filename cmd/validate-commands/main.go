@@ -69,11 +69,12 @@ type serverSetup struct {
 }
 
 type scanResult struct {
-	cmdVals map[string]uint16
-	cmdLoc  map[string]loc
-	server  serverSetup
-	handled map[string]loc
-	scanned int
+	cmdVals     map[string]uint16
+	cmdLoc      map[string]loc
+	invalidDefs map[string]loc
+	server      serverSetup
+	handled     map[string]loc
+	scanned     int
 }
 
 type cmdDefOcc struct {
@@ -83,8 +84,8 @@ type cmdDefOcc struct {
 
 func defaultPatterns() patterns {
 	return patterns{
-		cmdDefRe:             regexp.MustCompile(`(?m)^\s*(Cmd[0-9A-Za-z_]+)\s+uint16\s*=\s*(0x[0-9a-fA-F]+)\s*$`),
-		cmdDefDecimalRe:      regexp.MustCompile(`(?m)^\s*(Cmd[0-9A-Za-z_]+)\s+uint16\s*=\s*(\d+)\s*$`),
+		cmdDefRe:             regexp.MustCompile(`(?m)^\s*(Cmd[0-9A-Za-z_]+)\s+uint16\s*=\s*(0x[0-9a-fA-F]+)\s*(?://.*)?$`),
+		cmdDefDecimalRe:      regexp.MustCompile(`(?m)^\s*(Cmd[0-9A-Za-z_]+)\s+uint16\s*=\s*(\d+)\s*(?://.*)?$`),
 		registerMethodRe:     regexp.MustCompile(`protocol\.RegisterFullMethodCommand\(\s*"[^"]+"\s*,\s*protocol\.(Cmd[0-9A-Za-z_]+)\s*\)`),
 		bridgeCallRe:         regexp.MustCompile(`\bbridge\(\s*protocol\.(Cmd[0-9A-Za-z_]+)\s*\)`),
 		routerRegisterRe:     regexp.MustCompile(`\br\.Register\(\s*protocol\.(Cmd[0-9A-Za-z_]+)\s*,`),
@@ -107,16 +108,25 @@ func validateConsistency(scan scanResult, requireAll bool) []issue {
 func validateReferencesExist(scan scanResult) []issue {
 	var issues []issue
 	for name, where := range scan.server.registered {
+		if _, bad := scan.invalidDefs[name]; bad {
+			continue
+		}
 		if _, ok := scan.cmdVals[name]; !ok {
 			issues = append(issues, issue{msg: fmt.Sprintf("%s:%d: server registers unknown command protocol.%s (not found as Cmd* uint16 const)", where.file, where.line, name)})
 		}
 	}
 	for name, where := range scan.server.bridged {
+		if _, bad := scan.invalidDefs[name]; bad {
+			continue
+		}
 		if _, ok := scan.cmdVals[name]; !ok {
 			issues = append(issues, issue{msg: fmt.Sprintf("%s:%d: server bridges unknown command protocol.%s (not found as Cmd* uint16 const)", where.file, where.line, name)})
 		}
 	}
 	for name, where := range scan.handled {
+		if _, bad := scan.invalidDefs[name]; bad {
+			continue
+		}
 		if _, ok := scan.cmdVals[name]; !ok {
 			issues = append(issues, issue{msg: fmt.Sprintf("%s:%d: dispatcher handles unknown command protocol.%s (not found as Cmd* uint16 const)", where.file, where.line, name)})
 		}
@@ -171,15 +181,16 @@ func validateAllDefinedAreWired(scan scanResult) []issue {
 func parseFixed(commandsPath, serverPath, registryPath string) (scanResult, []issue) {
 	pat := defaultPatterns()
 	out := scanResult{
-		cmdVals: map[string]uint16{},
-		cmdLoc:  map[string]loc{},
-		server:  serverSetup{registered: map[string]loc{}, bridged: map[string]loc{}},
-		handled: map[string]loc{},
+		cmdVals:     map[string]uint16{},
+		cmdLoc:      map[string]loc{},
+		invalidDefs: map[string]loc{},
+		server:      serverSetup{registered: map[string]loc{}, bridged: map[string]loc{}},
+		handled:     map[string]loc{},
 	}
 	byVal := map[uint16][]cmdDefOcc{}
 	var issues []issue
 
-	issues = append(issues, scanFixedFile(commandsPath, pat, &out, byVal)...)
+	issues = append(issues, scanFixedFile(commandsPath, pat, &out, byVal, true)...)
 	issues = append(issues, scanFixedFile(serverPath, pat, &out, byVal)...)
 	issues = append(issues, scanFixedFile(registryPath, pat, &out, byVal)...)
 
@@ -187,7 +198,7 @@ func parseFixed(commandsPath, serverPath, registryPath string) (scanResult, []is
 	return out, issues
 }
 
-func scanFixedFile(path string, pat patterns, out *scanResult, byVal map[uint16][]cmdDefOcc) []issue {
+func scanFixedFile(path string, pat patterns, out *scanResult, byVal map[uint16][]cmdDefOcc, checkDecimal ...bool) []issue {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return []issue{{msg: fmt.Sprintf("read %s: %v", path, err)}}
@@ -195,8 +206,15 @@ func scanFixedFile(path string, pat patterns, out *scanResult, byVal map[uint16]
 	out.scanned++
 	s := string(b)
 
+	shouldCheckDecimal := false
+	if len(checkDecimal) > 0 {
+		shouldCheckDecimal = checkDecimal[0]
+	}
+
 	issues := scanCmdDefs(path, s, pat.cmdDefRe, out, byVal)
-	issues = append(issues, scanDecimalCmdDefs(path, s, pat.cmdDefDecimalRe)...)
+	if shouldCheckDecimal {
+		issues = append(issues, scanDecimalCmdDefs(path, s, pat.cmdDefDecimalRe, out)...)
+	}
 	scanRefs(path, s, pat.registerMethodRe, out.server.registered)
 	scanRefs(path, s, pat.bridgeCallRe, out.server.bridged)
 	scanRefs(path, s, pat.routerRegisterRe, out.server.bridged)
@@ -223,12 +241,13 @@ func scanCmdDefs(path, s string, re *regexp.Regexp, out *scanResult, byVal map[u
 	return issues
 }
 
-func scanDecimalCmdDefs(path, s string, re *regexp.Regexp) []issue {
+func scanDecimalCmdDefs(path, s string, re *regexp.Regexp, out *scanResult) []issue {
 	var issues []issue
 	for _, mi := range re.FindAllStringSubmatchIndex(s, -1) {
 		name := s[mi[2]:mi[3]]
 		raw := s[mi[4]:mi[5]]
 		where := loc{file: path, line: lineNumber(s, mi[0])}
+		out.invalidDefs[name] = where
 		issues = append(issues, issue{msg: fmt.Sprintf(
 			"%s:%d: protocol.%s must be a hex literal (0x....); got decimal %q",
 			where.file,
@@ -252,7 +271,7 @@ func scanRefs(path, s string, re *regexp.Regexp, out map[string]loc) {
 
 func validateFixedExpectations(out scanResult, commandsPath, serverPath, registryPath string, byVal map[uint16][]cmdDefOcc) []issue {
 	var issues []issue
-	if len(out.cmdVals) == 0 {
+	if len(out.cmdVals) == 0 && len(out.invalidDefs) == 0 {
 		issues = append(issues, issue{msg: fmt.Sprintf("no Cmd* uint16 constants found in %s", commandsPath)})
 	}
 	issues = append(issues, duplicateValueIssues(byVal)...)

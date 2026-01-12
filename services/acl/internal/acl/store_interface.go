@@ -22,7 +22,7 @@ type Store interface {
 	SetVisibility(tenantID, docID string, v Visibility) error
 	Grant(tenantID, docID, userID string, validFrom time.Time, validTo *time.Time) error
 	Revoke(tenantID, docID, userID string) error
-	CheckBatch(tenantID, userID string, docIDs []string, now time.Time) []string
+	CheckBatch(tenantID, userID string, docIDs []string, now time.Time) ([]string, error)
 
 	// ListGrants returns doc IDs that the user has explicit grants to.
 	// It does NOT attempt to enumerate public docs.

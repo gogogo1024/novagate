@@ -11,13 +11,51 @@
 
 ## 启动
 
+### 快速启动（本地开发）
+
+1. **启动 Docker Redis** 示例对以下开发场景建议使用 Docker Redis 而非手动启动 redis-server）：
+
+从项目根目录执行：
+
+```bash
+# 启动 Redis + Redis Insights（可选UI）
+docker-compose up -d
+
+# 验证 Redis 已就绪
+docker-compose exec redis redis-cli ping
+# 输出：PONG
+```
+
+2. **运行 ACL 服务**：
+
 ```bash
 cd services/acl
-
 go run . -config ./config.example.yaml
 ```
 
 也可以用环境变量指定配置文件路径：`ACL_CONFIG=/path/to/acl.yaml`。
+
+### Docker Compose 命令
+
+```bash
+# 启动服务（后台运行）
+docker-compose up -d
+
+# 查看日志
+docker-compose logs redis
+
+# 进入 Redis 交互式 CLI
+docker-compose exec redis redis-cli
+
+# 停止服务（保留数据）
+docker-compose down
+
+# 完全清理（删除数据和容器）
+docker-compose down -v
+```
+
+Redis 访问地址：`127.0.0.1:6379`  
+Redis Insights UI：http://localhost:5540（可视化管理）
 
 ## 配置（YAML）
 

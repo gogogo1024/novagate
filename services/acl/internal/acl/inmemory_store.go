@@ -64,6 +64,24 @@ func (s *InMemoryStore) Grant(tenantID, docID, userID string, validFrom time.Tim
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// Opportunity-based cleanup: remove expired grants for this doc.
+	now := time.Now()
+	if docs := s.expiring[tenantID]; docs != nil {
+		if users := docs[docID]; users != nil {
+			for u, expireTime := range users {
+				if expireTime.Before(now) {
+					delete(users, u)
+				}
+			}
+			if len(users) == 0 {
+				delete(docs, docID)
+			}
+		}
+		if len(docs) == 0 {
+			delete(s.expiring, tenantID)
+		}
+	}
+
 	if validTo == nil {
 		s.grantPermanentLocked(tenantID, docID, userID)
 		return nil
@@ -106,12 +124,12 @@ func (s *InMemoryStore) Revoke(tenantID, docID, userID string) error {
 	return nil
 }
 
-func (s *InMemoryStore) CheckBatch(tenantID, userID string, docIDs []string, now time.Time) []string {
+func (s *InMemoryStore) CheckBatch(tenantID, userID string, docIDs []string, now time.Time) ([]string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	if tenantID == "" || userID == "" {
-		return nil
+		return nil, nil
 	}
 	if now.IsZero() {
 		now = time.Now()
@@ -135,7 +153,7 @@ func (s *InMemoryStore) CheckBatch(tenantID, userID string, docIDs []string, now
 			continue
 		}
 	}
-	return allowed
+	return allowed, nil
 }
 
 func (s *InMemoryStore) ListGrants(tenantID, userID string, now time.Time) []string {

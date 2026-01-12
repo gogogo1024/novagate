@@ -70,7 +70,13 @@ func ACLCheckBatch(ctx context.Context, c *app.RequestContext) {
 		now = t
 	}
 
-	allowed := store.CheckBatch(req.TenantID, req.UserID, req.DocIDs, now)
+	// NOTE: Fail-closed on error to prevent leaking private content.
+	allowed, err := store.CheckBatch(req.TenantID, req.UserID, req.DocIDs, now)
+	if err != nil {
+		// Store error: return empty list (fail-closed) rather than guessing.
+		c.JSON(consts.StatusOK, checkBatchResponse{AllowedDocIDs: []string{}})
+		return
+	}
 	c.JSON(consts.StatusOK, checkBatchResponse{AllowedDocIDs: allowed})
 }
 

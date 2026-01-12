@@ -12,7 +12,7 @@ func TestInMemoryStore_DefaultPublic_AllowsWithoutVisibilityKey(t *testing.T) {
 	userID := "22222222-2222-2222-2222-222222222222"
 	docID := "33333333-3333-3333-3333-333333333333"
 
-	allowed := s.CheckBatch(tenantID, userID, []string{docID}, time.Now())
+	allowed, _ := s.CheckBatch(tenantID, userID, []string{docID}, time.Now())
 	if len(allowed) != 1 || allowed[0] != docID {
 		t.Fatalf("expected doc to be allowed by default, got=%v", allowed)
 	}
@@ -30,7 +30,7 @@ func TestInMemoryStore_RestrictedRequiresGrant_RevokeWorks(t *testing.T) {
 	}
 
 	now := time.Now()
-	allowed := s.CheckBatch(tenantID, userID, []string{docID}, now)
+	allowed, _ := s.CheckBatch(tenantID, userID, []string{docID}, now)
 	if len(allowed) != 0 {
 		t.Fatalf("expected restricted doc to be denied without grant, got=%v", allowed)
 	}
@@ -38,7 +38,7 @@ func TestInMemoryStore_RestrictedRequiresGrant_RevokeWorks(t *testing.T) {
 	if err := s.Grant(tenantID, docID, userID, now, nil); err != nil {
 		t.Fatalf("Grant(permanent): %v", err)
 	}
-	allowed = s.CheckBatch(tenantID, userID, []string{docID}, now)
+	allowed, _ = s.CheckBatch(tenantID, userID, []string{docID}, now)
 	if len(allowed) != 1 || allowed[0] != docID {
 		t.Fatalf("expected restricted doc to be allowed with permanent grant, got=%v", allowed)
 	}
@@ -46,7 +46,7 @@ func TestInMemoryStore_RestrictedRequiresGrant_RevokeWorks(t *testing.T) {
 	if err := s.Revoke(tenantID, docID, userID); err != nil {
 		t.Fatalf("Revoke: %v", err)
 	}
-	allowed = s.CheckBatch(tenantID, userID, []string{docID}, now)
+	allowed, _ = s.CheckBatch(tenantID, userID, []string{docID}, now)
 	if len(allowed) != 0 {
 		t.Fatalf("expected revoked restricted doc to be denied, got=%v", allowed)
 	}
@@ -71,11 +71,11 @@ func TestInMemoryStore_ExpiringGrant_RespectsNow(t *testing.T) {
 		t.Fatalf("Grant(expiring): %v", err)
 	}
 
-	allowed := s.CheckBatch(tenantID, userID, []string{docID}, base.Add(5*time.Minute))
+	allowed, _ := s.CheckBatch(tenantID, userID, []string{docID}, base.Add(5*time.Minute))
 	if len(allowed) != 1 {
 		t.Fatalf("expected allowed during validity, got=%v", allowed)
 	}
-	allowed = s.CheckBatch(tenantID, userID, []string{docID}, base.Add(11*time.Minute))
+	allowed, _ = s.CheckBatch(tenantID, userID, []string{docID}, base.Add(11*time.Minute))
 	if len(allowed) != 0 {
 		t.Fatalf("expected denied after expiration, got=%v", allowed)
 	}
@@ -141,7 +141,7 @@ func TestInMemoryStore_RevokeAllUser_RemovesBothEdgesAndCleansUp(t *testing.T) {
 		t.Fatalf("expected 0 grants after revoke-all, got=%v", grants)
 	}
 
-	allowed := s.CheckBatch(tenantID, userID, []string{docPerm, docExp}, now)
+	allowed, _ := s.CheckBatch(tenantID, userID, []string{docPerm, docExp}, now)
 	if len(allowed) != 0 {
 		t.Fatalf("expected all restricted docs denied after revoke-all, got=%v", allowed)
 	}

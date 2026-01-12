@@ -131,9 +131,9 @@ func (s *RedisStore) Revoke(tenantID, docID, userID string) error {
 	return err
 }
 
-func (s *RedisStore) CheckBatch(tenantID, userID string, docIDs []string, now time.Time) []string {
+func (s *RedisStore) CheckBatch(tenantID, userID string, docIDs []string, now time.Time) ([]string, error) {
 	if tenantID == "" || userID == "" {
-		return nil
+		return nil, nil
 	}
 	if now.IsZero() {
 		now = time.Now()
@@ -171,7 +171,7 @@ func (s *RedisStore) CheckBatch(tenantID, userID string, docIDs []string, now ti
 		}
 	}
 
-	return allowed
+	return allowed, nil
 }
 
 type redisDocOps struct {
