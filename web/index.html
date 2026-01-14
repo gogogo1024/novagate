@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Novagate 管理后台</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px 0;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        header h1 {
+            font-size: 28px;
+            font-weight: 600;
+        }
+
+        header .subtitle {
+            font-size: 14px;
+            opacity: 0.9;
+            margin-top: 5px;
+        }
+
+        nav {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        nav button {
+            padding: 12px 20px;
+            border: none;
+            background: none;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+            color: #666;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s ease;
+        }
+
+        nav button:hover {
+            color: #667eea;
+        }
+
+        nav button.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+
+        .section {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .section.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        }
+
+        .card h2 {
+            font-size: 20px;
+            margin-bottom: 20px;
+            color: #333;
+            border-bottom: 2px solid #f0f0f0;
+            padding-bottom: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #555;
+            font-size: 14px;
+        }
+
+        input[type="text"],
+        input[type="email"],
+        select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            transition: border-color 0.3s ease;
+        }
+
+        input[type="text"]:focus,
+        input[type="email"]:focus,
+        select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-danger {
+            background: #f56565;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #e53e3e;
+        }
+
+        .btn-secondary {
+            background: #e0e0e0;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #d0d0d0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+
+        thead {
+            background: #f8f8f8;
+        }
+
+        th {
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            border-bottom: 2px solid #e0e0e0;
+            color: #666;
+            font-size: 14px;
+        }
+
+        td {
+            padding: 12px;
+            border-bottom: 1px solid #f0f0f0;
+            font-size: 14px;
+        }
+
+        tr:hover {
+            background: #fafafa;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .badge-primary {
+            background: #e0e7ff;
+            color: #667eea;
+        }
+
+        .badge-success {
+            background: #dcfce7;
+            color: #16a34a;
+        }
+
+        .alert {
+            padding: 12px 16px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+
+        .alert-success {
+            background: #dcfce7;
+            color: #16a34a;
+            border-left: 4px solid #16a34a;
+        }
+
+        .alert-error {
+            background: #fee2e2;
+            color: #dc2626;
+            border-left: 4px solid #dc2626;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #999;
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-box {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 15px;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+        }
+
+        .modal-header {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .modal-footer {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 2px solid #f0f0f0;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            background: #667eea;
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .permission-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .permission-item {
+            background: #f0f0f0;
+            padding: 12px;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 13px;
+        }
+
+        .permission-item button {
+            background: none;
+            border: none;
+            color: #f56565;
+            cursor: pointer;
+            padding: 5px 10px;
+            font-size: 16px;
+            line-height: 1;
+            flex-shrink: 0;
+        }
+
+        .permission-item button:hover {
+            color: #e53e3e;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>🚀 Novagate 管理后台</h1>
+            <div class="subtitle">用户 · 权限 · 文档管理系统</div>
+        </div>
+    </header>
+
+    <div class="container">
+        <nav>
+            <button class="nav-btn active" data-section="dashboard">📊 仪表板</button>
+            <button class="nav-btn" data-section="users">👥 用户管理</button>
+            <button class="nav-btn" data-section="documents">📄 文档管理</button>
+            <button class="nav-btn" data-section="permissions">🔒 权限管理</button>
+            <button class="nav-btn" data-section="audit">📋 审计日志</button>
+        </nav>
+
+        <!-- Dashboard -->
+        <div id="dashboard" class="section active">
+            <div class="stats">
+                <div class="stat-box">
+                    <div class="stat-number" id="user-count">0</div>
+                    <div class="stat-label">总用户数</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-number" id="doc-count">0</div>
+                    <div class="stat-label">总文档数</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-number" id="perm-count">0</div>
+                    <div class="stat-label">权限规则</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>📊 快速概览</h2>
+                <p>欢迎使用 Novagate 管理后台。您可以通过此系统管理用户、文档和权限。</p>
+                <div style="margin-top: 20px; padding: 15px; background: #f0f0f0; border-radius: 4px; font-size: 14px; line-height: 1.6;">
+                    <strong>网关地址：</strong> localhost:9000<br>
+                    <strong>向量数据库：</strong> Milvus @ localhost:19530<br>
+                    <strong>权限存储：</strong> Redis @ localhost:6379<br>
+                    <strong>消息队列：</strong> Kafka @ localhost:9092
+                </div>
+            </div>
+        </div>
+
+        <!-- Users -->
+        <div id="users" class="section">
+            <div class="card">
+                <h2>👥 用户管理</h2>
+                <div id="user-alert"></div>
+                
+                <div style="margin-bottom: 20px;">
+                    <button class="btn-primary" onclick="openUserModal()">+ 新增用户</button>
+                </div>
+
+                <div id="users-container" class="empty-state">
+                    <div class="loading"></div> 加载中...
+                </div>
+            </div>
+        </div>
+
+        <!-- Documents -->
+        <div id="documents" class="section">
+            <div class="card">
+                <h2>📄 文档管理</h2>
+                <div id="doc-alert"></div>
+                
+                <div style="margin-bottom: 20px;">
+                    <button class="btn-primary" onclick="openDocModal()">+ 新增文档</button>
+                </div>
+
+                <div id="docs-container" class="empty-state">
+                    <div class="loading"></div> 加载中...
+                </div>
+            </div>
+        </div>
+
+        <!-- Permissions -->
+        <div id="permissions" class="section">
+            <div class="card">
+                <h2>🔒 权限管理</h2>
+                <div id="perm-alert"></div>
+
+                <div style="margin-bottom: 20px;">
+                    <button class="btn-primary" onclick="openPermModal()">+ 授予权限</button>
+                </div>
+
+                <div id="perms-container" class="empty-state">
+                    <div class="loading"></div> 加载中...
+                </div>
+            </div>
+        </div>
+
+        <!-- Audit Logs -->
+        <div id="audit" class="section">
+            <div class="card">
+                <h2>📋 审计日志</h2>
+                
+                <div id="audit-container" class="empty-state">
+                    <div class="empty-state-icon">📝</div>
+                    <p>暂无审计日志</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- User Modal -->
+    <div id="userModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">新增用户</div>
+            <div>
+                <div class="form-group">
+                    <label>用户 ID</label>
+                    <input type="text" id="userId" placeholder="e.g., user-001">
+                </div>
+                <div class="form-group">
+                    <label>用户名</label>
+                    <input type="text" id="userName" placeholder="e.g., Alice">
+                </div>
+                <div class="form-group">
+                    <label>邮箱</label>
+                    <input type="email" id="userEmail" placeholder="alice@example.com">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeUserModal()">取消</button>
+                <button class="btn-primary" onclick="createUser()">创建</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Document Modal -->
+    <div id="docModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">新增文档</div>
+            <div>
+                <div class="form-group">
+                    <label>文档 ID</label>
+                    <input type="text" id="docId" placeholder="e.g., doc-001">
+                </div>
+                <div class="form-group">
+                    <label>标题</label>
+                    <input type="text" id="docTitle" placeholder="文档标题">
+                </div>
+                <div class="form-group">
+                    <label>分类</label>
+                    <input type="text" id="docCategory" placeholder="e.g., programming">
+                </div>
+                <div class="form-group">
+                    <label>所有者</label>
+                    <input type="text" id="docOwner" placeholder="e.g., user-001">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeDocModal()">取消</button>
+                <button class="btn-primary" onclick="createDocument()">创建</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Permission Modal -->
+    <div id="permModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">授予权限</div>
+            <div>
+                <div class="form-group">
+                    <label>用户</label>
+                    <select id="permUser">
+                        <option value="">选择用户</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>文档</label>
+                    <select id="permDoc">
+                        <option value="">选择文档</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>租户 ID</label>
+                    <input type="text" id="permTenant" value="tenant-001" readonly>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closePermModal()">取消</button>
+                <button class="btn-primary" onclick="grantPermission()">授予</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/api';
+
+        // Navigation
+        document.querySelectorAll('.nav-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const section = btn.dataset.section;
+                switchSection(section);
+            });
+        });
+
+        function switchSection(section) {
+            document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+            document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+            
+            document.getElementById(section).classList.add('active');
+            event.target.classList.add('active');
+            
+            if (section === 'users') loadUsers();
+            else if (section === 'documents') loadDocuments();
+            else if (section === 'permissions') loadPermissions();
+            else if (section === 'dashboard') loadDashboard();
+            else if (section === 'audit') loadAuditLogs();
+        }
+
+        // API Calls
+        async function apiCall(endpoint, method = 'GET', data = null) {
+            try {
+                const options = {
+                    method,
+                    headers: { 'Content-Type': 'application/json' }
+                };
+                if (data) options.body = JSON.stringify(data);
+                
+                const response = await fetch(`${API_BASE}${endpoint}`, options);
+                return await response.json();
+            } catch (error) {
+                console.error('API Error:', error);
+                return { code: 500, message: error.message };
+            }
+        }
+
+        // Dashboard
+        async function loadDashboard() {
+            const users = await apiCall('/users');
+            const docs = await apiCall('/documents');
+            const perms = await apiCall('/permissions');
+
+            document.getElementById('user-count').textContent = users.data ? users.data.length : 0;
+            document.getElementById('doc-count').textContent = docs.data ? docs.data.length : 0;
+            document.getElementById('perm-count').textContent = perms.data ? perms.data.length : 0;
+        }
+
+        // Users
+        async function loadUsers() {
+            const result = await apiCall('/users');
+            const container = document.getElementById('users-container');
+            
+            if (!result.data || result.data.length === 0) {
+                container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">👤</div><p>暂无用户</p></div>';
+                return;
+            }
+
+            let html = '<table><thead><tr><th>用户 ID</th><th>用户名</th><th>邮箱</th><th>创建时间</th><th>操作</th></tr></thead><tbody>';
+            result.data.forEach(user => {
+                html += `<tr>
+                    <td><span class="badge badge-primary">${user.id}</span></td>
+                    <td>${user.name}</td>
+                    <td>${user.email}</td>
+                    <td>${formatDate(user.created_at)}</td>
+                    <td><button class="btn-danger" style="padding: 6px 12px; font-size: 13px;" onclick="deleteUser('${user.id}')">删除</button></td>
+                </tr>`;
+            });
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        async function createUser() {
+            const id = document.getElementById('userId').value;
+            const name = document.getElementById('userName').value;
+            const email = document.getElementById('userEmail').value;
+
+            if (!id || !name || !email) {
+                showAlert('user-alert', '请填写所有字段', 'error');
+                return;
+            }
+
+            const result = await apiCall('/users', 'POST', { id, name, email });
+            if (result.code === 200) {
+                closeUserModal();
+                showAlert('user-alert', '用户创建成功', 'success');
+                loadUsers();
+            } else {
+                showAlert('user-alert', result.message, 'error');
+            }
+        }
+
+        async function deleteUser(id) {
+            if (!confirm(`确认删除用户 ${id}?`)) return;
+            const result = await apiCall('/users', 'DELETE', { id });
+            if (result.code === 200) {
+                showAlert('user-alert', '用户已删除', 'success');
+                loadUsers();
+            } else {
+                showAlert('user-alert', result.message, 'error');
+            }
+        }
+
+        // Documents
+        async function loadDocuments() {
+            const result = await apiCall('/documents');
+            const container = document.getElementById('docs-container');
+            
+            if (!result.data || result.data.length === 0) {
+                container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📄</div><p>暂无文档</p></div>';
+                return;
+            }
+
+            let html = '<table><thead><tr><th>文档 ID</th><th>标题</th><th>分类</th><th>所有者</th><th>创建时间</th><th>操作</th></tr></thead><tbody>';
+            result.data.forEach(doc => {
+                html += `<tr>
+                    <td><span class="badge badge-success">${doc.id}</span></td>
+                    <td>${doc.title}</td>
+                    <td>${doc.category}</td>
+                    <td>${doc.owner_id}</td>
+                    <td>${formatDate(doc.created_at)}</td>
+                    <td><button class="btn-danger" style="padding: 6px 12px; font-size: 13px;" onclick="deleteDocument('${doc.id}')">删除</button></td>
+                </tr>`;
+            });
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        async function createDocument() {
+            const id = document.getElementById('docId').value;
+            const title = document.getElementById('docTitle').value;
+            const category = document.getElementById('docCategory').value;
+            const owner_id = document.getElementById('docOwner').value;
+
+            if (!id || !title || !category || !owner_id) {
+                showAlert('doc-alert', '请填写所有字段', 'error');
+                return;
+            }
+
+            const result = await apiCall('/documents', 'POST', { id, title, category, owner_id });
+            if (result.code === 200) {
+                closeDocModal();
+                showAlert('doc-alert', '文档创建成功', 'success');
+                loadDocuments();
+            } else {
+                showAlert('doc-alert', result.message, 'error');
+            }
+        }
+
+        async function deleteDocument(id) {
+            if (!confirm(`确认删除文档 ${id}?`)) return;
+            const result = await apiCall('/documents', 'DELETE', { id });
+            if (result.code === 200) {
+                showAlert('doc-alert', '文档已删除', 'success');
+                loadDocuments();
+            } else {
+                showAlert('doc-alert', result.message, 'error');
+            }
+        }
+
+        // Permissions
+        async function loadPermissions() {
+            const result = await apiCall('/permissions?tenant_id=tenant-001');
+            const container = document.getElementById('perms-container');
+            
+            if (!result.data || result.data.length === 0) {
+                container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🔒</div><p>暂无权限规则</p></div>';
+                return;
+            }
+
+            let html = '<div>';
+            result.data.forEach(perm => {
+                html += `<div class="card" style="margin-bottom: 15px;">
+                    <strong>用户: ${perm.user_id}</strong><br>
+                    <small>租户: ${perm.tenant_id}</small>
+                    <div class="permission-list">`;
+                
+                // 显示完整的文档信息
+                if (perm.documents && perm.documents.length > 0) {
+                    perm.documents.forEach(doc => {
+                        html += `<div class="permission-item">
+                            <div style="flex: 1;">
+                                <strong>${doc.title}</strong>
+                                <div style="font-size: 12px; color: #999; margin-top: 2px;">
+                                    ID: ${doc.id} | 分类: ${doc.category} | 所有者: ${doc.owner_id}
+                                </div>
+                            </div>
+                            <button onclick="revokePermission('${perm.tenant_id}', '${perm.user_id}', '${doc.id}')">✕</button>
+                        </div>`;
+                    });
+                } else if (perm.doc_ids && perm.doc_ids.length > 0) {
+                    // 备用方案：如果没有 documents 字段，显示 doc_ids
+                    perm.doc_ids.forEach(doc_id => {
+                        html += `<div class="permission-item">
+                            <span>${doc_id}</span>
+                            <button onclick="revokePermission('${perm.tenant_id}', '${perm.user_id}', '${doc_id}')">✕</button>
+                        </div>`;
+                    });
+                }
+                
+                html += `</div></div>`;
+            });
+            html += '</div>';
+            container.innerHTML = html;
+        }
+
+        async function grantPermission() {
+            const tenant_id = document.getElementById('permTenant').value;
+            const user_id = document.getElementById('permUser').value;
+            const doc_id = document.getElementById('permDoc').value;
+
+            if (!user_id || !doc_id) {
+                showAlert('perm-alert', '请选择用户和文档', 'error');
+                return;
+            }
+
+            const result = await apiCall('/permissions', 'POST', { tenant_id, user_id, doc_id });
+            if (result.code === 200) {
+                closePermModal();
+                showAlert('perm-alert', '权限已授予', 'success');
+                loadPermissions();
+            } else {
+                showAlert('perm-alert', result.message, 'error');
+            }
+        }
+
+        async function revokePermission(tenant_id, user_id, doc_id) {
+            if (!confirm(`撤销 ${user_id} 对 ${doc_id} 的访问权限?`)) return;
+            const result = await apiCall('/permissions', 'DELETE', { tenant_id, user_id, doc_id });
+            if (result.code === 200) {
+                showAlert('perm-alert', '权限已撤销', 'success');
+                loadPermissions();
+            } else {
+                showAlert('perm-alert', result.message, 'error');
+            }
+        }
+
+        // Audit Logs
+        async function loadAuditLogs() {
+            const result = await apiCall('/audit-logs');
+            const container = document.getElementById('audit-container');
+            
+            if (!result.data || !result.data.logs || result.data.logs.length === 0) {
+                container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📝</div><p>暂无审计日志</p></div>';
+                return;
+            }
+
+            let html = '<table><thead><tr><th>时间</th><th>操作</th><th>目标</th><th>详情</th></tr></thead><tbody>';
+            result.data.logs.forEach(log => {
+                html += `<tr>
+                    <td><small>${formatDate(log.timestamp)}</small></td>
+                    <td><span class="badge badge-primary">${log.action}</span></td>
+                    <td>${log.target}</td>
+                    <td>${log.message}</td>
+                </tr>`;
+            });
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        // Modals
+        function openUserModal() { document.getElementById('userModal').classList.add('active'); }
+        function closeUserModal() { document.getElementById('userModal').classList.remove('active'); clearForm(['userId', 'userName', 'userEmail']); }
+        function openDocModal() { document.getElementById('docModal').classList.add('active'); }
+        function closeDocModal() { document.getElementById('docModal').classList.remove('active'); clearForm(['docId', 'docTitle', 'docCategory', 'docOwner']); }
+        async function openPermModal() { 
+            document.getElementById('permModal').classList.add('active');
+
+            // 加载用户列表
+            const userSelect = document.getElementById('permUser');
+            userSelect.innerHTML = '<option value="">选择用户</option>';
+            const usersResp = await apiCall('/users');
+            if (usersResp.data) {
+                usersResp.data.forEach(u => {
+                    const option = document.createElement('option');
+                    option.value = u.id;
+                    option.textContent = `${u.id} - ${u.name}`;
+                    userSelect.appendChild(option);
+                });
+            }
+
+            // 加载文档列表
+            const docSelect = document.getElementById('permDoc');
+            docSelect.innerHTML = '<option value="">选择文档</option>';
+            const docsResp = await apiCall('/documents');
+            if (docsResp.data) {
+                docsResp.data.forEach(d => {
+                    const option = document.createElement('option');
+                    option.value = d.id;
+                    option.textContent = `${d.id} - ${d.title}`;
+                    docSelect.appendChild(option);
+                });
+            }
+        }
+        function closePermModal() { document.getElementById('permModal').classList.remove('active'); }
+
+        // Helpers
+        function clearForm(ids) {
+            ids.forEach(id => document.getElementById(id).value = '');
+        }
+
+        function showAlert(elementId, message, type) {
+            const alert = document.getElementById(elementId);
+            alert.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
+            setTimeout(() => alert.innerHTML = '', 4000);
+        }
+
+        function formatDate(dateStr) {
+            if (!dateStr) return '-';
+            const d = new Date(dateStr);
+            const ms = String(d.getMilliseconds()).padStart(3, '0');
+            return d.toLocaleString('zh-CN', { hour12: false }) + '.' + ms;
+        }
+
+        // Load dashboard on page load
+        loadDashboard();
+    </script>
+</body>
+</html>

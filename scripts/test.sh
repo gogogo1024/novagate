@@ -28,21 +28,36 @@ check_docker() {
 
 # Start Docker Redis if needed
 start_docker_redis() {
-    echo -e "${YELLOW}📦 Starting Docker Redis...${NC}"
+    echo -e "${YELLOW}📦 Starting Docker databases...${NC}"
     
     if ! check_docker; then
         echo -e "${RED}❌ Docker is not running. Please start Docker Desktop.${NC}"
         return 1
     fi
     
-    if docker-compose ps redis 2>/dev/null | grep -q "Up"; then
-        echo -e "${GREEN}✓ Redis already running in Docker${NC}"
+    # Check if using test compose file
+    local compose_file="${COMPOSE_FILE:-docker-compose.yml}"
+    local compose_cmd="docker-compose"
+    
+    if [[ -n "$USE_TEST_COMPOSE" ]]; then
+        compose_file="docker-compose.test.yml"
+        echo -e "${YELLOW}Using test configuration (no persistence)${NC}"
+    fi
+    
+    if [[ "$compose_file" != "docker-compose.yml" ]]; then
+        compose_cmd="docker-compose -f $compose_file"
+    fi
+    
+    if $compose_cmd ps redis 2>/dev/null | grep -q "Up"; then
+        echo -e "${GREEN}✓ Redis already running${NC}"
     else
-        docker-compose up -d redis
+        echo -e "${YELLOW}Starting Redis...${NC}"
+        $compose_cmd up -d redis
+        
         # Wait for healthcheck
         echo -e "${YELLOW}⏳ Waiting for Redis healthcheck...${NC}"
         for i in {1..30}; do
-            if docker-compose exec redis redis-cli ping &> /dev/null; then
+            if $compose_cmd exec redis redis-cli ping &> /dev/null; then
                 echo -e "${GREEN}✓ Redis is ready${NC}"
                 return 0
             fi
@@ -51,6 +66,11 @@ start_docker_redis() {
         echo -e "${RED}❌ Redis healthcheck timeout${NC}"
         return 1
     fi
+    
+    # Show optional databases
+    echo -e "${YELLOW}💡 Tip: Start optional databases with:${NC}"
+    echo -e "  docker-compose --profile postgres up -d  # PostgreSQL"
+    echo -e "  docker-compose --profile mysql up -d     # MySQL"
 }
 
 # Test Redis connectivity
@@ -111,6 +131,31 @@ main() {
             docker-compose down -v
             echo -e "${GREEN}✓ Done${NC}"
             ;;
+        docker-status)
+            echo -e "${YELLOW}📊 Docker container status:${NC}"
+            docker-compose ps
+            ;;
+        db-info)
+            cat << 'EOF'
+📊 Database Connection Information:
+
+Redis (默认启动):
+  Host: 127.0.0.1:6379
+  UI:   http://localhost:5540 (Redis Insights)
+
+PostgreSQL (可选):
+  Host: 127.0.0.1:5432
+  DB:   novagate
+  User: novagate
+  启动: docker-compose --profile postgres up -d
+
+MySQL (可选):
+  Host: 127.0.0.1:3306
+  DB:   novagate
+  User: novagate
+  启动: docker-compose --profile mysql up -d
+EOF
+            ;;
         redis-test)
             test_redis
             ;;
@@ -122,29 +167,37 @@ main() {
 Usage: ./scripts/test.sh <command> [options]
 
 Commands:
-  docker-up        Start Redis in Docker
-  docker-down      Stop Docker containers (keep data)
-  docker-clean     Stop and remove all Docker data
-  redis-test       Test Redis connectivity
-  test [target]    Run tests (requires Redis running)
-                   - test all: full suite
-                   - test acl: ACL module only
-                   - test protocol: protocol module only
+  docker-up        启动 Redis（默认）
+  docker-down      停止所有容器（保留数据）
+  docker-clean     停止并删除所有数据
+  docker-status    查看容器状态
+  db-info          显示数据库连接信息
+  redis-test       测试 Redis 连接
+  test [target]    运行测试（需要 Redis）
+                   - test all: 完整测试套件
+                   - test acl: 仅 ACL 模块
+                   - test protocol: 仅协议模块
 
 Environment Variables:
   REDIS_HOST       Redis host (default: 127.0.0.1)
   REDIS_PORT       Redis port (default: 6379)
+  USE_TEST_COMPOSE 使用 docker-compose.test.yml（无持久化）
 
 Examples:
-  # Start Docker and run all tests
+  # 启动 Redis 并运行所有测试
   ./scripts/test.sh docker-up
   ./scripts/test.sh test
 
-  # Just run ACL tests
-  ./scripts/test.sh test acl
+  # 使用测试配置（更快，无持久化）
+  USE_TEST_COMPOSE=1 ./scripts/test.sh docker-up
+  ./scripts/test.sh test
 
-  # Use local Redis (already running)
-  ./scripts/test.sh test all
+  # 查看数据库连接信息
+  ./scripts/test.sh db-info
+
+  # 启动额外数据库
+  docker-compose --profile postgres up -d
+  docker-compose --profile mysql up -d
 EOF
             ;;
     esac

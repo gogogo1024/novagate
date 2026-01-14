@@ -52,32 +52,189 @@ Novagate 是一个基于 TCP 长连接的轻量协议网关骨架：
 ## 目录结构
 
 - `protocol/`：纯协议（Frame/Message/Flags/Command 映射）
-- `cmd/server/`：示例服务端启动入口（注册 command + handler）
-- `cmd/client/`：示例客户端（手工组包/发包/收包）
+- `cmd/server/`：**示例网关服务端** - 展示如何注册 Command、关联业务 handler、配置超时等
+  - 包含完整配置加载流程（YAML + 环境变量 + flag 优先级）
+  - 展示 strict command mapping 与 dispatcher 桥接的最佳实践
+  - **用途**：作为实际部署的参考；或直接修改后作为生产网关启动入口
+- `cmd/client/`：**协议调试工具** - TCP 层手动组包/发包/收包，用于联调与验证
+  - 支持 flags（one-way、gzip）、自定义 payload、Request ID
+  - **用途**：不依赖 SDK 直接测试服务端；快速验证协议实现是否正确
 - `internal/`：Go 侧默认实现的内部组件（dispatcher/codec/limits/transport 等）
 - `docs/`：协议与架构决策文档
 
 ## 子服务
 
 - ACL HTTP 子服务（用于 RAG/检索场景的逐用户权限判定）：[services/acl/README.md](services/acl/README.md)
+- **管理后台**（用户/权限/文档管理 Web UI）：[cmd/admin/](cmd/admin/) 和 [docs/admin-guide.md](docs/admin-guide.md)
+
+## 完整系统（Docker Compose）
+
+本项目支持以下服务的容器化部署：
+
+| 服务 | 用途 | 默认 | 可选 |
+|------|------|------|------|
+| **Redis** | ACL 权限数据存储 | ✅ | |
+| **Admin（管理后台）** | Web UI 管理用户/文档/权限 | ✅ | |
+| **Gateway（网关）** | RPC 入口，TCP 长连接 | ✅ | |
+| **Kafka + Zookeeper** | 消息队列 | | 📦 |
+| **Milvus** | 向量数据库（RAG 检索） | | 📦 |
+| PostgreSQL | 关系型数据库 | | 📦 |
+| MySQL | 关系型数据库 | | 📦 |
+
+### 🚀 一键启动（三种模式）
+
+#### 1️⃣ 快速启动（仅核心服务）
+```bash
+docker-compose up -d
+```
+包含：Redis、管理后台、网关  
+访问：http://localhost:8888
+
+#### 2️⃣ 完整启动（加入 Kafka）
+```bash
+docker-compose --profile kafka up -d
+```
+新增：Kafka、Zookeeper、Kafka UI  
+消息队列地址：localhost:9092
+
+#### 3️⃣ 全功能启动（加入 Milvus）
+```bash
+docker-compose --profile kafka --profile milvus up -d
+```
+新增：Milvus、etcd、MinIO、Milvus Attu  
+向量数据库地址：localhost:19530
+
+### 📊 服务状态与日志
+
+```bash
+# 查看所有服务运行状态
+docker-compose ps
+
+# 实时查看日志
+docker-compose logs -f
+
+# 查看特定服务日志
+docker-compose logs -f admin   # 管理后台
+docker-compose logs -f gateway # 网关
+```
+
+### 🎛️ 交互式启动工具
+
+```bash
+# 使用图形菜单选择启动模式
+./scripts/docker-compose-launcher.sh
+```
+
+提供的功能：
+- 选择启动模式（快速/完整/全功能）
+- 自动等待服务就绪并显示地址
+- 查看服务状态
+- 实时日志查看
+- 服务启停和清理
+
+### 📚 更多信息
+
+详见 [Docker Compose 完整指南](docs/docker-compose-guide.md)
+
+### 详细指南
+
+- **完整配置**：[docker-compose.yml](docker-compose.yml)
+- **管理工具**：[scripts/db.sh](scripts/db.sh)
+- **快速上手**：[docs/kafka-milvus-quickstart.md](docs/kafka-milvus-quickstart.md)
+- **数据库参考**：[docs/database-reference.md](docs/database-reference.md)
+
+### 管理界面（启动后访问）
+
+| 服务 | 地址 | 默认凭证 |
+|------|------|--------|
+| Kafka UI | http://localhost:8080 | - |
+| Milvus Attu | http://localhost:8000 | - |
+| MinIO Console | http://localhost:9001 | minioadmin/minioadmin |
+| Redis Commander | http://localhost:8081 | - |
 
 ## 快速开始
 
-### 使用 mise 管理 Go 版本
+### ⚡ 最快上手（5分钟）
 
-本项目使用 `mise` 管理 Go 版本（与 `go.mod` 的 `go 1.25.5` 对齐）。
+1️⃣ **启动系统**
+```bash
+docker-compose up -d
+```
+
+2️⃣ **打开管理后台**
+```
+http://localhost:8888
+```
+
+3️⃣ **查看日志**
+```bash
+docker-compose logs -f admin gateway
+```
+
+详见：[QUICK_START.md](QUICK_START.md) | [docker-compose-guide.md](docs/docker-compose-guide.md)
+
+### 🎯 三种启动模式
+
+| 命令 | 包含服务 | 场景 | 资源 |
+|------|--------|------|------|
+| `docker-compose up -d` | Redis + Admin + Gateway | 💻 开发/测试 | 500MB |
+| `docker-compose --profile kafka up -d` | + Kafka + Zookeeper | 📨 消息队列 | 1.5GB |
+| `docker-compose --profile kafka --profile milvus up -d` | + Milvus + etcd + MinIO | 🤖 RAG 演示 | 3GB |
+
+### 📚 文档导航
+
+| 文档 | 说明 |
+|------|------|
+| [QUICK_START.md](QUICK_START.md) | ⚡ 5分钟快速开始 |
+| [docs/docker-compose-guide.md](docs/docker-compose-guide.md) | 📖 完整启动指南 |
+| [docs/docker-compose-cheatsheet.md](docs/docker-compose-cheatsheet.md) | 🔍 命令速查表 |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 🏗️ 系统架构 |
+| [docs/admin-guide.md](docs/admin-guide.md) | 🎛️ 管理后台使用 |
+| [docs/quick-start.md](docs/quick-start.md) | 🧪 端到端演示 |
+| [docs/protocol.md](docs/protocol.md) | 📋 协议文档 |
+
+### 🚀 完整端到端演示（可选）
+
+需要完整的自动化演示脚本：
+
+```bash
+# 启动所有服务、初始化数据、运行演示
+./scripts/e2e-demo.sh
+
+# 在另一个终端运行 RAG 演示
+python3 scripts/rag-demo.py --demo-mode
+```
+
+### 📊 服务访问地址
+
+启动后各服务访问地址：
+
+- **🌐 管理后台**：http://localhost:8888
+- **🔌 RPC 网关**：127.0.0.1:9000
+- **💾 Redis**：localhost:6379
+- **📨 Kafka**（可选）：localhost:9092
+- **🔎 Kafka UI**（可选）：http://localhost:8080
+- **🤖 Milvus**（可选）：localhost:19530
+- **🎨 Milvus UI**（可选）：http://localhost:8000
+
+### 🛠️ 使用 mise 管理 Go 版本
 
 ```bash
 mise install
 ```
 
-凡是依赖 Go 工具链的命令，都可以统一用 `mise exec -- go ...` 来跑，例如：
+凡是依赖 Go 工具链的命令，都可以统一用 `mise exec -- go ...` 来跑：
 
 ```bash
 # 基础静态检查
 mise exec -- go vet ./...
 mise exec -- go mod tidy
+
+# 运行测试
+mise exec -- go test ./...
 ```
+
+详见：[端到端演示指南](docs/e2e-demo-guide.md)
 
 ### 运行测试
 
@@ -188,19 +345,85 @@ mise exec -- go run ./cmd/client -addr 127.0.0.1:9000 -cmd 0x0001 -payload ping
 resp: cmd=0x0001 request_id=1 payload="pong"
 ```
 
-### One-way（不等响应）
+### 管理后台（可选）
+
+```bash
+# 启动管理后台（需要 Redis 运行）
+./scripts/admin.sh
+
+# 或直接运行
+mise exec -- go run ./cmd/admin -addr :8888 -redis localhost:6379
+```
+
+访问：**http://localhost:8888**
+
+功能：
+- 👥 用户管理（新增、删除）
+- 📄 文档管理（新增、删除）
+- 🔒 权限管理（授予、撤销）
+- 📋 审计日志（操作记录）
+
+详见：[管理后台指南](docs/admin-guide.md)
+
+### 运行客户端（Ping）
+
+#### 1. 测试 One-way 消息（不等响应）
 
 ```bash
 mise exec -- go run ./cmd/client -addr 127.0.0.1:9000 -cmd 0x0001 -payload ping -flags 0x04
 ```
 
-### 启用 gzip 压缩
+#### 2. 测试 gzip 压缩
 
 ```bash
-mise exec -- go run ./cmd/client -addr 127.0.0.1:9000 -cmd 0x0001 -payload ping -flags 0x01
+mise exec -- go run ./cmd/client -addr 127.0.0.1:9000 -cmd 0x0001 -payload "hello world" -flags 0x01
 ```
 
-> 注：压缩/解压由 `protocol.EncodeFrameBody` / `protocol.DecodeFrameBody` 统一处理。
+#### 3. 快速验证服务端是否启动
+
+```bash
+mise exec -- go run ./cmd/client -addr your-server:9000 -cmd 0x0001 -payload ping
+```
+
+#### 4. 与其他客户端库交互测试
+
+当你在 Java/Python/Node.js 等其他语言实现了 Novagate 客户端后，可以用 `cmd/client` 验证跨语言协议兼容性：
+
+```bash
+# 1. 启动 Go 网关
+mise exec -- go run ./cmd/server
+
+# 2. 用 Go 客户端验证
+mise exec -- go run ./cmd/client -addr 127.0.0.1:9000 -cmd 0x0001 -payload test
+
+# 3. 用其他语言的客户端测试同样的命令
+python3 my_client.py --addr 127.0.0.1:9000 --cmd 0x0001 --payload test
+```
+
+#### 5. 调试包格式问题
+
+如果自己实现的客户端无法与服务端通信，可以：
+
+1. 启动服务端：`mise exec -- go run ./cmd/server`
+2. 用 Go 客户端测试：`mise exec -- go run ./cmd/client -addr 127.0.0.1:9000 -cmd 0x0001 -payload test`
+3. 如果 Go 客户端成功，说明服务端协议实现无问题，问题在自己的客户端实现
+4. 用 Wireshark/tcpdump 抓包对比 Go 客户端的字节流
+
+**完整客户端选项**：
+
+```bash
+mise exec -- go run ./cmd/client -h
+```
+
+| 选项 | 说明 | 示例 |
+|------|------|------|
+| `-addr` | 服务端地址 | `127.0.0.1:9000` |
+| `-cmd` | 命令（十六进制） | `0x0001`（Ping） |
+| `-payload` | 请求内容 | `"hello"` |
+| `-flags` | Frame flags（十六进制） | `0x01`（gzip）、`0x04`（one-way） |
+| `-id` | Request ID | `42` |
+
+
 
 ## 作为库使用（Go）
 
@@ -347,3 +570,71 @@ func main() {
 
 - 新增命令：在 `protocol/commands.go` 定义 `CmdXXX`，并在 `setup` 中注册 handler
 - 扩展 flags：优先在 `protocol` 包集中实现编码/解码规则，保持跨语言一致性
+
+## CI/CD
+
+### GitHub Actions Workflows
+
+本项目配置了完整的 CI/CD 流水线：
+
+#### 1. **CI 测试** ([.github/workflows/ci.yml](.github/workflows/ci.yml))
+
+自动触发：每次 push 到 `main` 分支或 pull request
+
+- ✅ 启动 Redis 服务容器（7-alpine）
+- ✅ 运行根模块测试（race detector + coverage）
+- ✅ 运行 ACL 模块测试（独立 go.mod）
+- ✅ 命令映射一致性校验（`cmd/validate-commands`）
+- ✅ 上传测试覆盖率到 Codecov（可选）
+
+#### 2. **Pre-commit 检查** ([.github/workflows/pre-commit.yml](.github/workflows/pre-commit.yml))
+
+自动触发：pull request 或 push
+
+- ✅ `go fmt` 格式化检查（未格式化会失败）
+- ✅ `go vet` 静态分析
+- ✅ 命令映射一致性校验
+- ⚠️ TODO/FIXME 警告（无 issue 引用时提示）
+- ❌ 硬编码凭证检查（发现时失败）
+
+#### 3. **Docker 镜像构建** ([.github/workflows/docker-build.yml](.github/workflows/docker-build.yml))
+
+自动触发：push 到 `main`、打 tag 或 pull request
+
+- 🐳 构建 `novagate-server` 镜像（[Dockerfile.server](Dockerfile.server)）
+- 🐳 构建 `novagate-acl` 镜像（[services/acl/Dockerfile](services/acl/Dockerfile)）
+- 📦 推送到 GitHub Container Registry (`ghcr.io`)
+- 🏷️ 自动标记：`main`、PR 号、版本号、commit SHA
+
+#### 4. **发布自动化** ([.github/workflows/release.yml](.github/workflows/release.yml))
+
+自动触发：打 tag（`v*.*.*`）
+
+- 📦 交叉编译多平台二进制（Linux/macOS，amd64/arm64）
+- 🏷️ 生成 GitHub Release + Changelog
+- ⬆️ 上传发布包（`.tar.gz`）
+
+### 本地测试（推荐）
+
+```bash
+# 使用 Docker Redis 运行完整测试
+./scripts/test.sh docker-up
+./scripts/test.sh test
+
+# 或手动启动 Redis
+docker-compose up -d
+mise exec -- go test ./...
+cd services/acl && go test ./...
+```
+
+详见：[DOCKER_TESTING.md](DOCKER_TESTING.md)
+
+### 状态徽章（可选）
+
+在仓库中添加：
+
+```markdown
+[![CI](https://github.com/gogogo1024/novagate/actions/workflows/ci.yml/badge.svg)](https://github.com/gogogo1024/novagate/actions/workflows/ci.yml)
+[![Docker](https://github.com/gogogo1024/novagate/actions/workflows/docker-build.yml/badge.svg)](https://github.com/gogogo1024/novagate/actions/workflows/docker-build.yml)
+```
+

@@ -8,6 +8,18 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -20,11 +32,38 @@ jobs:
       - name: Install toolchain
         run: mise install
 
-      - name: Go vet
+      - name: Verify Redis connectivity
+        run: |
+          redis-cli -h 127.0.0.1 -p 6379 ping
+          echo "✓ Redis service ready"
+
+      - name: Go vet (root module)
         run: mise exec -- go vet ./...
 
-      - name: Go test
-        run: mise exec -- go test ./...
+      - name: Go test (root module)
+        run: mise exec -- go test -v -race -coverprofile=coverage.txt ./...
 
       - name: Validate command mappings
         run: mise exec -- go run ./cmd/validate-commands
+
+      - name: Go test (ACL module)
+        working-directory: services/acl
+        run: |
+          go vet ./...
+          go test -v -race -coverprofile=coverage-acl.txt ./...
+      
+      - name: Upload coverage to Codecov (root)
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.txt
+          flags: root
+          name: root-module
+        continue-on-error: true
+      
+      - name: Upload coverage to Codecov (ACL)
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./services/acl/coverage-acl.txt
+          flags: acl
+          name: acl-module
+        continue-on-error: true

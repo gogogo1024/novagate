@@ -1,0 +1,35 @@
+FROM golang:1.25.5-alpine AS builder
+
+WORKDIR /app
+
+# 安装依赖
+RUN apk add --no-cache git ca-certificates
+
+# 复制源代码
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+# 编译
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o admin ./cmd/admin
+
+
+# 运行镜像
+FROM alpine:3.19
+
+RUN apk add --no-cache ca-certificates curl
+WORKDIR /app
+
+# 复制前端文件
+COPY web/ ./web/
+
+# 复制编译好的二进制
+COPY --from=builder /app/admin /app/admin
+
+EXPOSE 8888
+
+HEALTHCHECK --interval=10s --timeout=5s --retries=3 \
+    CMD curl -f http://localhost:8888/api/users || exit 1
+
+CMD /app/admin -addr :8888 -redis ${REDIS_ADDR:-redis:6379}

@@ -1,0 +1,30 @@
+# Git
+.git
+.gitignore
+
+# Documentation
+*.md
+docs/
+
+# Test files
+*_test.go
+testdata/
+
+# Build artifacts
+dist/
+
+# IDE
+.vscode
+.idea
+
+# OS
+.DS_Store
+
+# Scripts
+script/
+build.sh
+
+# Local config
+.env
+config.*.yaml
+!config.example.yaml

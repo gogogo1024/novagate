@@ -24,9 +24,18 @@ go.work.sum
 # dotenv
 .env
 .env.*
+!.env.example
 
 # Local runtime config (copy from novagate.yaml.example)
 novagate.yaml
+
+# Database backups
+backup/
+*.rdb
+*.sql
+
+# Docker volumes (should be managed by docker-compose)
+*-data/
 
 # Editor/IDE
 .vscode/

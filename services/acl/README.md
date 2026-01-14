@@ -67,6 +67,8 @@ server:
 
 redis:
   # 留空则使用 in-memory store
+  # Docker 容器内使用: addr: "redis:6379"
+  # 本地开发使用: addr: "127.0.0.1:6379"
   addr: "127.0.0.1:6379"
   password: ""
   db: 0

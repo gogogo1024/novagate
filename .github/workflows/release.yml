@@ -1,0 +1,87 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up mise
+        uses: jdx/mise-action@v2
+        with:
+          cache: true
+
+      - name: Install toolchain
+        run: mise install
+
+      - name: Run tests
+        run: |
+          mise exec -- go test -v ./...
+          cd services/acl && go test -v ./...
+
+      - name: Build binaries
+        run: |
+          # Server
+          GOOS=linux GOARCH=amd64 mise exec -- go build -o dist/novagate-server-linux-amd64 ./cmd/server
+          GOOS=linux GOARCH=arm64 mise exec -- go build -o dist/novagate-server-linux-arm64 ./cmd/server
+          GOOS=darwin GOARCH=amd64 mise exec -- go build -o dist/novagate-server-darwin-amd64 ./cmd/server
+          GOOS=darwin GOARCH=arm64 mise exec -- go build -o dist/novagate-server-darwin-arm64 ./cmd/server
+          
+          # Client
+          GOOS=linux GOARCH=amd64 mise exec -- go build -o dist/novagate-client-linux-amd64 ./cmd/client
+          GOOS=darwin GOARCH=arm64 mise exec -- go build -o dist/novagate-client-darwin-arm64 ./cmd/client
+          
+          # ACL service
+          cd services/acl
+          GOOS=linux GOARCH=amd64 go build -o ../../dist/novagate-acl-linux-amd64 .
+          GOOS=linux GOARCH=arm64 go build -o ../../dist/novagate-acl-linux-arm64 .
+          GOOS=darwin GOARCH=arm64 go build -o ../../dist/novagate-acl-darwin-arm64 .
+
+      - name: Create release archive
+        run: |
+          cd dist
+          tar -czf novagate-${{ github.ref_name }}-linux-amd64.tar.gz novagate-*-linux-amd64
+          tar -czf novagate-${{ github.ref_name }}-linux-arm64.tar.gz novagate-*-linux-arm64
+          tar -czf novagate-${{ github.ref_name }}-darwin-amd64.tar.gz novagate-*-darwin-amd64
+          tar -czf novagate-${{ github.ref_name }}-darwin-arm64.tar.gz novagate-*-darwin-arm64
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Extract changelog for this version from git log
+          echo "## What's Changed" > CHANGELOG.md
+          git log --pretty=format:"- %s (%h)" $(git describe --tags --abbrev=0 HEAD~1)..HEAD >> CHANGELOG.md || echo "First release" >> CHANGELOG.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          body_path: CHANGELOG.md
+          files: |
+            dist/*.tar.gz
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

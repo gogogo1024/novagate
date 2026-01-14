@@ -1,0 +1,33 @@
+# Novagate 演示配置文件
+# 用于 e2e-demo.sh
+
+server:
+    addr: ":9000"
+
+timeouts:
+    idle: "5m"
+    write: "10s"
+
+# Redis ACL 配置
+acl:
+    store: "redis"
+    redis:
+        addr: "localhost:6379"
+        db: 0
+
+# Milvus 向量数据库配置
+milvus:
+    enabled: true
+    host: "localhost"
+    port: 19530
+    collection: "novagate_rag_documents"
+
+# Kafka 配置
+kafka:
+    enabled: true
+    brokers:
+        - "localhost:9092"
+    topics:
+        gateway_events: "novagate.gateway.events"
+        acl_audit: "novagate.acl.audit"
+        vector_updates: "novagate.vector.updates"

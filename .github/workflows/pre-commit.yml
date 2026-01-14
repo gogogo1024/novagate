@@ -1,0 +1,59 @@
+name: pre-commit
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+
+jobs:
+  pre-commit-checks:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up mise
+        uses: jdx/mise-action@v2
+        with:
+          cache: true
+
+      - name: Install toolchain
+        run: mise install
+
+      - name: Go fmt check
+        run: |
+          mise exec -- go fmt ./...
+          if [[ -n $(git status -s) ]]; then
+            echo "❌ go fmt produced changes. Please run 'go fmt ./...' locally."
+            git diff
+            exit 1
+          fi
+          echo "✓ go fmt check passed"
+
+      - name: Go vet
+        run: mise exec -- go vet ./...
+
+      - name: Validate command mappings
+        run: |
+          mise exec -- go run ./cmd/validate-commands
+          echo "✓ Command mappings are consistent"
+
+      - name: Check for TODO/FIXME without issue reference
+        run: |
+          # Allow TODO(#123) or FIXME(username), but warn on bare TODO/FIXME
+          if grep -rn "TODO\|FIXME" --include="*.go" . | grep -v "TODO(#\|FIXME(\|vendor/" | grep -v ".git/"; then
+            echo "⚠️  Found TODO/FIXME without context. Consider adding issue reference like TODO(#123)"
+            # Don't fail, just warn
+            exit 0
+          fi
+          echo "✓ No bare TODO/FIXME found"
+
+      - name: Check for hardcoded credentials
+        run: |
+          # Basic check for common patterns (not exhaustive)
+          if grep -rn "password.*=.*['\"]" --include="*.go" . | grep -v "test\|example" | grep -v ".git/"; then
+            echo "❌ Potential hardcoded credentials found"
+            exit 1
+          fi
+          echo "✓ No obvious hardcoded credentials"

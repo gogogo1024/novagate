@@ -1,0 +1,21 @@
+# 仅测试环境（最小化配置，快速启动）
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: novagate-redis-test
+    ports:
+      - "6379:6379"
+    command: redis-server --save "" --appendonly no
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 2s
+      retries: 3
+    networks:
+      - novagate-test
+    tmpfs:
+      - /data
+
+networks:
+  novagate-test:
+    driver: bridge

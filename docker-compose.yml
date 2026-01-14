@@ -1,10 +1,11 @@
 services:
+  # Redis - 主数据存储（ACL 服务使用）
   redis:
     image: redis:7-alpine
     container_name: novagate-redis
     ports:
-      - "6379:6379"
-    command: redis-server --appendonly yes
+      - "${REDIS_PORT:-6379}:6379"
+    command: redis-server --appendonly yes --maxmemory ${REDIS_MAX_MEMORY:-256mb} --maxmemory-policy allkeys-lru
     volumes:
       - redis-data:/data
     healthcheck:
@@ -12,23 +13,304 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    restart: unless-stopped
     networks:
       - novagate-network
+    environment:
+      - TZ=Asia/Shanghai
 
-  # Optional: Redis Insights for visualization
+  # Redis Insights - 可视化管理工具（可选）
   redis-insights:
     image: redislabs/redisinsight:latest
     container_name: novagate-redis-insights
     ports:
-      - "5540:5540"
+      - "${REDIS_INSIGHTS_PORT:-5540}:5540"
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
+    volumes:
+      - redis-insights-data:/data
+    restart: unless-stopped
+    networks:
+      - novagate-network
+    profiles:
+      - tools
+
+  # PostgreSQL - 预留（如需关系型数据库支持）
+  postgres:
+    image: postgres:16-alpine
+    container_name: novagate-postgres
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-novagate}
+      POSTGRES_USER: ${POSTGRES_USER:-novagate}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-novagate_dev}
+      TZ: Asia/Shanghai
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/db/init-postgres.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-novagate}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
     networks:
       - novagate-network
 
+  # MySQL - 预留（如需 MySQL 支持）
+  mysql:
+    image: mysql:8.0
+    container_name: novagate-mysql
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-novagate}
+      MYSQL_USER: ${MYSQL_USER:-novagate}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-novagate_dev}
+      TZ: Asia/Shanghai
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./scripts/db/init-mysql.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-root}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - novagate-network
+
+  # ===== Kafka 消息队列（使用 KRaft 模式，无需 Zookeeper）=====
+  
+  # Kafka Broker - KRaft 模式
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: novagate-kafka
+    ports:
+      - "${KAFKA_PORT:-9092}:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_NODE_ID: 1
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:29093"
+      KAFKA_LISTENERS: PLAINTEXT://kafka:29092,CONTROLLER://kafka:29093,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824
+      CLUSTER_ID: 6E4GjVhFR1WO75mhmd3kLg
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - novagate-network
+
+  # Kafka UI（管理工具）
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: novagate-kafka-ui
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "${KAFKA_UI_PORT:-8080}:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: novagate-local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      DYNAMIC_CONFIG_ENABLED: "true"
+    restart: unless-stopped
+    networks:
+      - novagate-network
+    profiles:
+      - tools
+
+  # ===== Milvus 向量数据库 =====
+  
+  # etcd - Milvus 元数据存储
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.5
+    container_name: novagate-etcd
+    environment:
+      ETCD_AUTO_COMPACTION_MODE: revision
+      ETCD_AUTO_COMPACTION_RETENTION: "1000"
+      ETCD_QUOTA_BACKEND_BYTES: "4294967296"
+      ETCD_SNAPSHOT_COUNT: "50000"
+    volumes:
+      - etcd-data:/etcd
+    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls=http://0.0.0.0:2379 --data-dir=/etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - novagate-network
+
+  # MinIO - Milvus 对象存储
+  minio:
+    image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    container_name: novagate-minio
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio-data:/minio_data
+    command: minio server /minio_data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - novagate-network
+
+  # Milvus Standalone
+  milvus:
+    image: milvusdb/milvus:v2.3.3
+    container_name: novagate-milvus
+    depends_on:
+      etcd:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    ports:
+      - "${MILVUS_PORT:-19530}:19530"
+      - "${MILVUS_METRIC_PORT:-9091}:9091"
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+      MINIO_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_USE_SSL: "false"
+      MINIO_BUCKET_NAME: a-bucket
+      # Standalone 模式配置
+      COMMON_STORAGETYPE: minio
+    volumes:
+      - milvus-data:/var/lib/milvus
+    command: ["milvus", "run", "standalone"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - novagate-network
+    profiles:
+      - base-db
+
+  # Attu - Milvus 管理界面
+  attu:
+    image: zilliz/attu:v2.3.3
+    container_name: novagate-attu
+    depends_on:
+      milvus:
+        condition: service_healthy
+    ports:
+      - "${ATTU_PORT:-8000}:3000"
+    environment:
+      MILVUS_URL: milvus:19530
+    restart: unless-stopped
+    networks:
+      - novagate-network
+    profiles:
+      - tools
+
+  # ============================================================
+  # Novagate Services
+  # ============================================================
+
+  # 管理后台 - Web UI 管理用户/文档/权限
+  admin:
+    build:
+      context: .
+      dockerfile: Dockerfile.admin
+    container_name: novagate-admin
+    ports:
+      - "${ADMIN_PORT:-8888}:8888"
+    environment:
+      - REDIS_ADDR=redis:6379
+      - ADMIN_ADDR=:8888
+      - TZ=Asia/Shanghai
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - novagate-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/api/users"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # 网关服务 - RPC 入口
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    container_name: novagate-gateway
+    ports:
+      - "${GATEWAY_PORT:-9999}:9000"
+    environment:
+      - NOVAGATE_ADDR=:9000
+      - NOVAGATE_IDLE_TIMEOUT=5m
+      - NOVAGATE_WRITE_TIMEOUT=10s
+      - TZ=Asia/Shanghai
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./novagate.yaml:/etc/novagate/novagate.yaml:ro
+    networks:
+      - novagate-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "9000"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    command: /app/novagate-server -config /etc/novagate/novagate.yaml
+
 volumes:
   redis-data:
+    driver: local
+  redis-insights-data:
+    driver: local
+  postgres-data:
+    driver: local
+  mysql-data:
+    driver: local
+  kafka-data:
+    driver: local
+  etcd-data:
+    driver: local
+  minio-data:
+    driver: local
+  milvus-data:
+    driver: local
 
 networks:
   novagate-network:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16

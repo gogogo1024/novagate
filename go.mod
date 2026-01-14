@@ -5,6 +5,7 @@ go 1.25.5
 require (
 	github.com/cloudwego/kitex v0.15.4
 	github.com/joho/godotenv v1.5.1
+	github.com/redis/go-redis/v9 v9.12.1
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -12,10 +13,12 @@ require (
 	github.com/bytedance/gopkg v0.1.3 // indirect
 	github.com/bytedance/sonic v1.14.2 // indirect
 	github.com/bytedance/sonic/loader v0.4.0 // indirect
+	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cloudwego/base64x v0.1.6 // indirect
 	github.com/cloudwego/gopkg v0.1.8 // indirect
 	github.com/cloudwego/netpoll v0.7.2 // indirect
 	github.com/cloudwego/runtimex v0.1.1 // indirect
+	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/pprof v0.0.0-20240727154555-813a5fbdbec8 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.9 // indirect
