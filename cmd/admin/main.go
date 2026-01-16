@@ -22,6 +22,7 @@ func main() {
 	var (
 		addr         = flag.String("addr", ":8888", "admin service address")
 		redisAddr    = flag.String("redis", "localhost:6379", "redis address")
+		milvusAddr   = flag.String("milvus", "localhost:19530", "milvus address")
 		readTimeout  = flag.Duration("read-timeout", 10*time.Second, "read timeout")
 		writeTimeout = flag.Duration("write-timeout", 10*time.Second, "write timeout")
 		idleTimeout  = flag.Duration("idle-timeout", 60*time.Second, "idle timeout")
@@ -29,7 +30,7 @@ func main() {
 	flag.Parse()
 
 	// Create admin service
-	adminSvc, err := admin.NewService(*redisAddr)
+	adminSvc, err := admin.NewService(*redisAddr, *milvusAddr)
 	if err != nil {
 		log.Fatalf("failed to create admin service: %v", err)
 	}

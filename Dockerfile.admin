@@ -32,4 +32,4 @@ EXPOSE 8888
 HEALTHCHECK --interval=10s --timeout=5s --retries=3 \
     CMD curl -f http://localhost:8888/api/users || exit 1
 
-CMD /app/admin -addr :8888 -redis ${REDIS_ADDR:-redis:6379}
+CMD /app/admin -addr :8888 -redis ${REDIS_ADDR:-redis:6379} -milvus ${MILVUS_ADDR:-milvus:19530}

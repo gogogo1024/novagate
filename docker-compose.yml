@@ -248,11 +248,13 @@ services:
       - "${ADMIN_PORT:-8888}:8888"
     environment:
       - REDIS_ADDR=redis:6379
+      - MILVUS_ADDR=milvus:19530
       - ADMIN_ADDR=:8888
       - TZ=Asia/Shanghai
     depends_on:
       redis:
         condition: service_healthy
+    # Milvus 是可选的（搜索引擎），不阻塞启动
     networks:
       - novagate-network
     restart: unless-stopped

@@ -427,12 +427,19 @@
                 <h2>👥 用户管理</h2>
                 <div id="user-alert"></div>
                 
-                <div style="margin-bottom: 20px;">
+                <div style="margin-bottom: 20px; display: flex; gap: 10px; align-items: center;">
                     <button class="btn-primary" onclick="openUserModal()">+ 新增用户</button>
+                    <input type="text" id="userSearch" placeholder="搜索用户..." style="flex: 1; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px;" onkeyup="loadUsers()">
                 </div>
 
                 <div id="users-container" class="empty-state">
                     <div class="loading"></div> 加载中...
+                </div>
+                
+                <div id="usersPagination" style="margin-top: 20px; display: none; text-align: center;">
+                    <button class="btn-secondary" onclick="previousUserPage()" style="margin-right: 10px;">← 上一页</button>
+                    <span id="userPageInfo">第 1 页</span>
+                    <button class="btn-secondary" onclick="nextUserPage()" style="margin-left: 10px;">下一页 →</button>
                 </div>
             </div>
         </div>
@@ -443,12 +450,19 @@
                 <h2>📄 文档管理</h2>
                 <div id="doc-alert"></div>
                 
-                <div style="margin-bottom: 20px;">
+                <div style="margin-bottom: 20px; display: flex; gap: 10px; align-items: center;">
                     <button class="btn-primary" onclick="openDocModal()">+ 新增文档</button>
+                    <input type="text" id="docSearch" placeholder="搜索文档..." style="flex: 1; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px;" onkeyup="loadDocuments()">
                 </div>
 
                 <div id="docs-container" class="empty-state">
                     <div class="loading"></div> 加载中...
+                </div>
+
+                <div id="docsPagination" style="margin-top: 20px; display: none; text-align: center;">
+                    <button class="btn-secondary" onclick="previousDocPage()" style="margin-right: 10px;">← 上一页</button>
+                    <span id="docPageInfo">第 1 页</span>
+                    <button class="btn-secondary" onclick="nextDocPage()" style="margin-left: 10px;">下一页 →</button>
                 </div>
             </div>
         </div>
@@ -572,16 +586,16 @@
         document.querySelectorAll('.nav-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 const section = btn.dataset.section;
-                switchSection(section);
+                switchSection(section, btn);
             });
         });
 
-        function switchSection(section) {
+        function switchSection(section, clickedButton) {
             document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
             document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
             
             document.getElementById(section).classList.add('active');
-            event.target.classList.add('active');
+            if (clickedButton) clickedButton.classList.add('active');
             
             if (section === 'users') loadUsers();
             else if (section === 'documents') loadDocuments();
@@ -599,8 +613,21 @@
                 };
                 if (data) options.body = JSON.stringify(data);
                 
-                const response = await fetch(`${API_BASE}${endpoint}`, options);
-                return await response.json();
+                // Add timestamp to prevent caching for GET requests
+                let url = `${API_BASE}${endpoint}`;
+                if (method === 'GET') {
+                    const separator = url.includes('?') ? '&' : '?';
+                    url += `${separator}t=${Date.now()}`;
+                }
+                
+                const response = await fetch(url, options);
+                if (!response.ok) {
+                    console.error(`HTTP Error: ${response.status} ${response.statusText}`);
+                    return { code: response.status, message: `HTTP ${response.status}` };
+                }
+                const result = await response.json();
+                console.log('API Response:', url, result);
+                return result;
             } catch (error) {
                 console.error('API Error:', error);
                 return { code: 500, message: error.message };
@@ -613,33 +640,93 @@
             const docs = await apiCall('/documents');
             const perms = await apiCall('/permissions');
 
-            document.getElementById('user-count').textContent = users.data ? users.data.length : 0;
-            document.getElementById('doc-count').textContent = docs.data ? docs.data.length : 0;
-            document.getElementById('perm-count').textContent = perms.data ? perms.data.length : 0;
+            document.getElementById('user-count').textContent = (users && users.data) ? users.data.length : 0;
+            document.getElementById('doc-count').textContent = (docs && docs.data) ? docs.data.length : 0;
+            document.getElementById('perm-count').textContent = (perms && perms.data) ? perms.data.length : 0;
         }
+
+        // Global pagination state
+        let userState = { page: 1, pageSize: 10, total: 0, totalPage: 0 };
+        let docState = { page: 1, pageSize: 10, total: 0, totalPage: 0 };
 
         // Users
         async function loadUsers() {
-            const result = await apiCall('/users');
             const container = document.getElementById('users-container');
+            const pagination = document.getElementById('usersPagination');
             
-            if (!result.data || result.data.length === 0) {
-                container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">👤</div><p>暂无用户</p></div>';
-                return;
-            }
+            // Show loading state
+            container.innerHTML = '<div class="empty-state"><div class="loading"></div><p>加载中...</p></div>';
+            pagination.style.display = 'none';
+            
+            try {
+                const keyword = document.getElementById('userSearch').value;
+                const result = await apiCall(`/users?keyword=${encodeURIComponent(keyword)}&page=${userState.page}&page_size=${userState.pageSize}`);
+                
+                console.log('loadUsers result:', result);
+                
+                // Check for errors
+                if (!result || result.code !== 200) {
+                    const errorMsg = result?.message || '网络错误';
+                    console.error('API error:', errorMsg);
+                    container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">❌</div><p>加载失败: ' + errorMsg + '</p></div>';
+                    pagination.style.display = 'none';
+                    return;
+                }
+                
+                if (!result.data || !result.data.data || result.data.data.length === 0) {
+                    console.log('No users found');
+                    container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">👤</div><p>暂无用户</p></div>';
+                    pagination.style.display = 'none';
+                    return;
+                }
 
-            let html = '<table><thead><tr><th>用户 ID</th><th>用户名</th><th>邮箱</th><th>创建时间</th><th>操作</th></tr></thead><tbody>';
-            result.data.forEach(user => {
-                html += `<tr>
-                    <td><span class="badge badge-primary">${user.id}</span></td>
-                    <td>${user.name}</td>
-                    <td>${user.email}</td>
-                    <td>${formatDate(user.created_at)}</td>
-                    <td><button class="btn-danger" style="padding: 6px 12px; font-size: 13px;" onclick="deleteUser('${user.id}')">删除</button></td>
-                </tr>`;
-            });
-            html += '</tbody></table>';
-            container.innerHTML = html;
+                // Save pagination state
+                userState.page = result.data.page || 1;
+                userState.pageSize = result.data.page_size || 10;
+                userState.total = result.data.total || 0;
+                userState.totalPage = result.data.total_page || 1;
+
+                let html = '<table><thead><tr><th>用户 ID</th><th>用户名</th><th>邮箱</th><th>创建时间</th><th>操作</th></tr></thead><tbody>';
+                result.data.data.forEach(user => {
+                    const formattedDate = formatDate(user.created_at);
+                    html += `<tr>
+                        <td><span class="badge badge-primary">${user.id || '-'}</span></td>
+                        <td>${user.name || '-'}</td>
+                        <td>${user.email || '-'}</td>
+                        <td>${formattedDate}</td>
+                        <td><button class="btn-danger" style="padding: 6px 12px; font-size: 13px;" onclick="deleteUser('${user.id}')">删除</button></td>
+                    </tr>`;
+                });
+                html += '</tbody></table>';
+                container.innerHTML = html;
+
+                // Show pagination if needed
+                if (userState.totalPage > 1) {
+                    pagination.style.display = 'block';
+                    document.getElementById('userPageInfo').textContent = `第 ${userState.page} / ${userState.totalPage} 页`;
+                } else {
+                    pagination.style.display = 'none';
+                }
+                console.log('Users loaded successfully');
+            } catch (error) {
+                console.error('loadUsers error:', error);
+                container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">❌</div><p>加载失败: ' + error.message + '</p></div>';
+                pagination.style.display = 'none';
+            }
+        }
+
+        function previousUserPage() {
+            if (userState.page > 1) {
+                userState.page--;
+                loadUsers();
+            }
+        }
+
+        function nextUserPage() {
+            if (userState.page < userState.totalPage) {
+                userState.page++;
+                loadUsers();
+            }
         }
 
         async function createUser() {
@@ -675,27 +762,83 @@
 
         // Documents
         async function loadDocuments() {
-            const result = await apiCall('/documents');
             const container = document.getElementById('docs-container');
+            const pagination = document.getElementById('docsPagination');
             
-            if (!result.data || result.data.length === 0) {
-                container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📄</div><p>暂无文档</p></div>';
-                return;
-            }
+            // Show loading state
+            container.innerHTML = '<div class="empty-state"><div class="loading"></div><p>加载中...</p></div>';
+            pagination.style.display = 'none';
+            
+            try {
+                const keyword = document.getElementById('docSearch').value;
+                const result = await apiCall(`/documents?keyword=${encodeURIComponent(keyword)}&page=${docState.page}&page_size=${docState.pageSize}`);
+                
+                console.log('loadDocuments result:', result);
+                
+                // Check for errors
+                if (!result || result.code !== 200) {
+                    const errorMsg = result?.message || '网络错误';
+                    console.error('API error:', errorMsg);
+                    container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">❌</div><p>加载失败: ' + errorMsg + '</p></div>';
+                    pagination.style.display = 'none';
+                    return;
+                }
+                
+                if (!result.data || !result.data.data || result.data.data.length === 0) {
+                    console.log('No documents found');
+                    container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📄</div><p>暂无文档</p></div>';
+                    pagination.style.display = 'none';
+                    return;
+                }
 
-            let html = '<table><thead><tr><th>文档 ID</th><th>标题</th><th>分类</th><th>所有者</th><th>创建时间</th><th>操作</th></tr></thead><tbody>';
-            result.data.forEach(doc => {
-                html += `<tr>
-                    <td><span class="badge badge-success">${doc.id}</span></td>
-                    <td>${doc.title}</td>
-                    <td>${doc.category}</td>
-                    <td>${doc.owner_id}</td>
-                    <td>${formatDate(doc.created_at)}</td>
-                    <td><button class="btn-danger" style="padding: 6px 12px; font-size: 13px;" onclick="deleteDocument('${doc.id}')">删除</button></td>
-                </tr>`;
-            });
-            html += '</tbody></table>';
-            container.innerHTML = html;
+                // Save pagination state
+                docState.page = result.data.page || 1;
+                docState.pageSize = result.data.page_size || 10;
+                docState.total = result.data.total || 0;
+                docState.totalPage = result.data.total_page || 1;
+
+                let html = '<table><thead><tr><th>文档 ID</th><th>标题</th><th>分类</th><th>所有者</th><th>创建时间</th><th>操作</th></tr></thead><tbody>';
+                result.data.data.forEach(doc => {
+                    const formattedDate = formatDate(doc.created_at);
+                    html += `<tr>
+                        <td><span class="badge badge-success">${doc.id || '-'}</span></td>
+                        <td>${doc.title || '-'}</td>
+                        <td>${doc.category || '-'}</td>
+                        <td>${doc.owner_id || '-'}</td>
+                        <td>${formattedDate}</td>
+                        <td><button class="btn-danger" style="padding: 6px 12px; font-size: 13px;" onclick="deleteDocument('${doc.id}')">删除</button></td>
+                    </tr>`;
+                });
+                html += '</tbody></table>';
+                container.innerHTML = html;
+
+                // Show pagination if needed
+                if (docState.totalPage > 1) {
+                    pagination.style.display = 'block';
+                    document.getElementById('docPageInfo').textContent = `第 ${docState.page} / ${docState.totalPage} 页`;
+                } else {
+                    pagination.style.display = 'none';
+                }
+                console.log('Documents loaded successfully');
+            } catch (error) {
+                console.error('loadDocuments error:', error);
+                container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">❌</div><p>加载失败: ' + error.message + '</p></div>';
+                pagination.style.display = 'none';
+            }
+        }
+
+        function previousDocPage() {
+            if (docState.page > 1) {
+                docState.page--;
+                loadDocuments();
+            }
+        }
+
+        function nextDocPage() {
+            if (docState.page < docState.totalPage) {
+                docState.page++;
+                loadDocuments();
+            }
         }
 
         async function createDocument() {
@@ -732,48 +875,69 @@
 
         // Permissions
         async function loadPermissions() {
-            const result = await apiCall('/permissions?tenant_id=tenant-001');
             const container = document.getElementById('perms-container');
             
-            if (!result.data || result.data.length === 0) {
-                container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🔒</div><p>暂无权限规则</p></div>';
-                return;
-            }
-
-            let html = '<div>';
-            result.data.forEach(perm => {
-                html += `<div class="card" style="margin-bottom: 15px;">
-                    <strong>用户: ${perm.user_id}</strong><br>
-                    <small>租户: ${perm.tenant_id}</small>
-                    <div class="permission-list">`;
+            // Show loading state
+            container.innerHTML = '<div class="empty-state"><div class="loading"></div><p>加载中...</p></div>';
+            
+            try {
+                const result = await apiCall('/permissions?tenant_id=tenant-001');
                 
-                // 显示完整的文档信息
-                if (perm.documents && perm.documents.length > 0) {
-                    perm.documents.forEach(doc => {
-                        html += `<div class="permission-item">
-                            <div style="flex: 1;">
-                                <strong>${doc.title}</strong>
-                                <div style="font-size: 12px; color: #999; margin-top: 2px;">
-                                    ID: ${doc.id} | 分类: ${doc.category} | 所有者: ${doc.owner_id}
-                                </div>
-                            </div>
-                            <button onclick="revokePermission('${perm.tenant_id}', '${perm.user_id}', '${doc.id}')">✕</button>
-                        </div>`;
-                    });
-                } else if (perm.doc_ids && perm.doc_ids.length > 0) {
-                    // 备用方案：如果没有 documents 字段，显示 doc_ids
-                    perm.doc_ids.forEach(doc_id => {
-                        html += `<div class="permission-item">
-                            <span>${doc_id}</span>
-                            <button onclick="revokePermission('${perm.tenant_id}', '${perm.user_id}', '${doc_id}')">✕</button>
-                        </div>`;
-                    });
+                console.log('loadPermissions result:', result);
+                
+                // Check for errors
+                if (!result || result.code !== 200) {
+                    const errorMsg = result?.message || '网络错误';
+                    console.error('API error:', errorMsg);
+                    container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">❌</div><p>加载失败: ' + errorMsg + '</p></div>';
+                    return;
                 }
                 
-                html += `</div></div>`;
-            });
-            html += '</div>';
-            container.innerHTML = html;
+                if (!result.data || result.data.length === 0) {
+                    console.log('No permissions found');
+                    container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🔒</div><p>暂无权限规则</p></div>';
+                    return;
+                }
+
+                let html = '<div>';
+                result.data.forEach(perm => {
+                    html += `<div class="card" style="margin-bottom: 15px;">
+                        <strong>用户: ${perm.user_id || '-'}</strong><br>
+                        <small>租户: ${perm.tenant_id || '-'}</small>
+                        <div class="permission-list">`;
+                    
+                    // 显示完整的文档信息
+                    if (perm.documents && perm.documents.length > 0) {
+                        perm.documents.forEach(doc => {
+                            html += `<div class="permission-item">
+                                <div style="flex: 1;">
+                                    <strong>${doc.title || '-'}</strong>
+                                    <div style="font-size: 12px; color: #999; margin-top: 2px;">
+                                        ID: ${doc.id || '-'} | 分类: ${doc.category || '-'} | 所有者: ${doc.owner_id || '-'}
+                                    </div>
+                                </div>
+                                <button onclick="revokePermission('${perm.tenant_id}', '${perm.user_id}', '${doc.id}')">✕</button>
+                            </div>`;
+                        });
+                    } else if (perm.doc_ids && perm.doc_ids.length > 0) {
+                        // 备用方案：如果没有 documents 字段，显示 doc_ids
+                        perm.doc_ids.forEach(doc_id => {
+                            html += `<div class="permission-item">
+                                <span>${doc_id}</span>
+                                <button onclick="revokePermission('${perm.tenant_id}', '${perm.user_id}', '${doc_id}')">✕</button>
+                            </div>`;
+                        });
+                    }
+                    
+                    html += `</div></div>`;
+                });
+                html += '</div>';
+                container.innerHTML = html;
+                console.log('Permissions loaded successfully');
+            } catch (error) {
+                console.error('loadPermissions error:', error);
+                container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">❌</div><p>加载失败: ' + error.message + '</p></div>';
+            }
         }
 
         async function grantPermission() {
@@ -809,25 +973,47 @@
 
         // Audit Logs
         async function loadAuditLogs() {
-            const result = await apiCall('/audit-logs');
             const container = document.getElementById('audit-container');
             
-            if (!result.data || !result.data.logs || result.data.logs.length === 0) {
-                container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📝</div><p>暂无审计日志</p></div>';
-                return;
-            }
+            // Show loading state
+            container.innerHTML = '<div class="empty-state"><div class="loading"></div><p>加载中...</p></div>';
+            
+            try {
+                const result = await apiCall('/audit-logs');
+                
+                console.log('loadAuditLogs result:', result);
+                
+                // Check for errors
+                if (!result || result.code !== 200) {
+                    const errorMsg = result?.message || '网络错误';
+                    console.error('API error:', errorMsg);
+                    container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">❌</div><p>加载失败: ' + errorMsg + '</p></div>';
+                    return;
+                }
+                
+                if (!result.data || !result.data.logs || result.data.logs.length === 0) {
+                    console.log('No audit logs found');
+                    container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📝</div><p>暂无审计日志</p></div>';
+                    return;
+                }
 
-            let html = '<table><thead><tr><th>时间</th><th>操作</th><th>目标</th><th>详情</th></tr></thead><tbody>';
-            result.data.logs.forEach(log => {
-                html += `<tr>
-                    <td><small>${formatDate(log.timestamp)}</small></td>
-                    <td><span class="badge badge-primary">${log.action}</span></td>
-                    <td>${log.target}</td>
-                    <td>${log.message}</td>
-                </tr>`;
-            });
-            html += '</tbody></table>';
-            container.innerHTML = html;
+                let html = '<table><thead><tr><th>时间</th><th>操作</th><th>目标</th><th>详情</th></tr></thead><tbody>';
+                result.data.logs.forEach(log => {
+                    const formattedDate = formatDate(log.timestamp);
+                    html += `<tr>
+                        <td><small>${formattedDate}</small></td>
+                        <td><span class="badge badge-primary">${log.action || '-'}</span></td>
+                        <td>${log.target || '-'}</td>
+                        <td>${log.message || '-'}</td>
+                    </tr>`;
+                });
+                html += '</tbody></table>';
+                container.innerHTML = html;
+                console.log('Audit logs loaded successfully');
+            } catch (error) {
+                console.error('loadAuditLogs error:', error);
+                container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">❌</div><p>加载失败: ' + error.message + '</p></div>';
+            }
         }
 
         // Modals
@@ -842,8 +1028,8 @@
             const userSelect = document.getElementById('permUser');
             userSelect.innerHTML = '<option value="">选择用户</option>';
             const usersResp = await apiCall('/users');
-            if (usersResp.data) {
-                usersResp.data.forEach(u => {
+            if (usersResp && usersResp.data && usersResp.data.data) {
+                usersResp.data.data.forEach(u => {
                     const option = document.createElement('option');
                     option.value = u.id;
                     option.textContent = `${u.id} - ${u.name}`;
@@ -855,8 +1041,8 @@
             const docSelect = document.getElementById('permDoc');
             docSelect.innerHTML = '<option value="">选择文档</option>';
             const docsResp = await apiCall('/documents');
-            if (docsResp.data) {
-                docsResp.data.forEach(d => {
+            if (docsResp && docsResp.data && docsResp.data.data) {
+                docsResp.data.data.forEach(d => {
                     const option = document.createElement('option');
                     option.value = d.id;
                     option.textContent = `${d.id} - ${d.title}`;

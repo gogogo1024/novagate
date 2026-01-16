@@ -5,19 +5,25 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 )
 
+const (
+	auditLogsKey = "audit:logs"
+)
+
 // Service represents the admin service
 type Service struct {
-	redis *redis.Client
+	redis  *redis.Client
+	search *SearchService // Milvus 向量搜索
 }
 
 // NewService creates a new admin service
-func NewService(redisAddr string) (*Service, error) {
+func NewService(redisAddr, milvusAddr string) (*Service, error) {
 	client := redis.NewClient(&redis.Options{
 		Addr: redisAddr,
 	})
@@ -29,7 +35,21 @@ func NewService(redisAddr string) (*Service, error) {
 		return nil, fmt.Errorf("redis connection failed: %w", err)
 	}
 
-	return &Service{redis: client}, nil
+	// Initialize search service (optional, can be nil if Milvus unavailable)
+	var searchSvc *SearchService
+	if milvusAddr != "" {
+		var err error
+		searchSvc, err = NewSearchService(milvusAddr)
+		if err != nil {
+			// Log but don't fail - fallback to string matching
+			fmt.Printf("⚠️  Milvus unavailable, using fallback search: %v\n", err)
+		}
+	}
+
+	return &Service{
+		redis:  client,
+		search: searchSvc,
+	}, nil
 }
 
 // Response wrapper
@@ -57,6 +77,25 @@ type User struct {
 	CreatedAt string `json:"created_at"`
 }
 
+// userMatchesKeyword checks if a user matches the search keyword (case-insensitive)
+func userMatchesKeyword(user User, keyword string) bool {
+	if keyword == "" {
+		return true
+	}
+	// Normalize: trim spaces and convert to lowercase
+	keyword = strings.ToLower(strings.TrimSpace(keyword))
+	if keyword == "" {
+		return true
+	}
+	// Check all fields (case-insensitive for all)
+	lowerID := strings.ToLower(user.ID)
+	lowerName := strings.ToLower(user.Name)
+	lowerEmail := strings.ToLower(user.Email)
+	return strings.Contains(lowerName, keyword) ||
+		strings.Contains(lowerID, keyword) ||
+		strings.Contains(lowerEmail, keyword)
+}
+
 type CreateUserReq struct {
 	ID    string `json:"id"`
 	Name  string `json:"name"`
@@ -67,9 +106,63 @@ func (s *Service) ListUsers(w http.ResponseWriter, r *http.Request) error {
 	ctx, cancel := NewContext()
 	defer cancel()
 
+	keyword := r.URL.Query().Get("keyword")
+	page, pageSize := parsePagination(r)
+
+	var users []User
+
+	// Use Milvus vector search if available and keyword provided
+	if s.search != nil && keyword != "" {
+		userIDs, err := s.search.SearchUsers(ctx, keyword, 100) // 搜索前 100 个
+		if err == nil && len(userIDs) > 0 {
+			// Fetch users by IDs
+			for _, userID := range userIDs {
+				data, err := s.redis.Get(ctx, "user:"+userID).Result()
+				if err != nil {
+					continue
+				}
+				var user User
+				if err := json.Unmarshal([]byte(data), &user); err != nil {
+					continue
+				}
+				users = append(users, user)
+			}
+		} else {
+			// Fallback to string matching
+			users = s.getUsersByStringMatch(ctx, keyword)
+		}
+	} else {
+		// No keyword or Milvus unavailable - list all or use fallback
+		users = s.getUsersByStringMatch(ctx, keyword)
+	}
+
+	// Pagination
+	total := len(users)
+	start := (page - 1) * pageSize
+	if start > total {
+		start = total
+	}
+	end := start + pageSize
+	if end > total {
+		end = total
+	}
+
+	paginated := users[start:end]
+
+	return s.respondJSON(w, 200, "success", map[string]interface{}{
+		"data":       paginated,
+		"page":       page,
+		"page_size":  pageSize,
+		"total":      total,
+		"total_page": (total + pageSize - 1) / pageSize,
+	})
+}
+
+// getUsersByStringMatch is the fallback search method
+func (s *Service) getUsersByStringMatch(ctx context.Context, keyword string) []User {
 	keys, err := s.redis.Keys(ctx, "user:*").Result()
 	if err != nil {
-		return err
+		return nil
 	}
 
 	var users []User
@@ -83,10 +176,11 @@ func (s *Service) ListUsers(w http.ResponseWriter, r *http.Request) error {
 		if err := json.Unmarshal([]byte(data), &user); err != nil {
 			continue
 		}
-		users = append(users, user)
+		if userMatchesKeyword(user, keyword) {
+			users = append(users, user)
+		}
 	}
-
-	return s.respondJSON(w, 200, "success", users)
+	return users
 }
 
 func (s *Service) CreateUser(w http.ResponseWriter, r *http.Request) error {
@@ -126,6 +220,14 @@ func (s *Service) CreateUser(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
+	// Index to Milvus for vector search
+	if s.search != nil {
+		if err := s.search.IndexUser(ctx, user); err != nil {
+			// Log but don't fail
+			fmt.Printf("⚠️  Failed to index user to Milvus: %v\n", err)
+		}
+	}
+
 	// Audit log
 	s.addAuditLog(ctx, "user_created", req.ID, "created user: "+req.Name)
 
@@ -149,6 +251,13 @@ func (s *Service) DeleteUser(w http.ResponseWriter, r *http.Request) error {
 	err := s.redis.Del(ctx, "user:"+req.ID).Err()
 	if err != nil {
 		return err
+	}
+
+	// Delete from Milvus
+	if s.search != nil {
+		if err := s.search.DeleteUser(ctx, req.ID); err != nil {
+			fmt.Printf("⚠️  Failed to delete user from Milvus: %v\n", err)
+		}
 	}
 
 	// Delete user permissions
@@ -177,6 +286,38 @@ type Document struct {
 	CreatedAt string `json:"created_at"`
 }
 
+// documentMatchesKeyword checks if a document matches the search keyword
+func documentMatchesKeyword(doc Document, keyword string) bool {
+	if keyword == "" {
+		return true
+	}
+	// Normalize: trim spaces and convert to lowercase
+	keyword = strings.ToLower(strings.TrimSpace(keyword))
+	if keyword == "" {
+		return true
+	}
+	// Check all relevant fields (case-insensitive for all)
+	lowerID := strings.ToLower(doc.ID)
+	lowerTitle := strings.ToLower(doc.Title)
+	lowerCategory := strings.ToLower(doc.Category)
+	return strings.Contains(lowerTitle, keyword) ||
+		strings.Contains(lowerCategory, keyword) ||
+		strings.Contains(lowerID, keyword)
+}
+
+// parsePagination extracts and validates pagination parameters
+func parsePagination(r *http.Request) (int, int) {
+	page := 1
+	pageSize := 50
+	if p, err := strconv.Atoi(r.URL.Query().Get("page")); err == nil && p > 0 {
+		page = p
+	}
+	if ps, err := strconv.Atoi(r.URL.Query().Get("page_size")); err == nil && ps > 0 && ps <= 100 {
+		pageSize = ps
+	}
+	return page, pageSize
+}
+
 type CreateDocReq struct {
 	ID       string `json:"id"`
 	Title    string `json:"title"`
@@ -188,9 +329,59 @@ func (s *Service) ListDocuments(w http.ResponseWriter, r *http.Request) error {
 	ctx, cancel := NewContext()
 	defer cancel()
 
+	keyword := r.URL.Query().Get("keyword")
+	page, pageSize := parsePagination(r)
+
+	var docs []Document
+
+	// Use Milvus vector search if available and keyword provided
+	if s.search != nil && keyword != "" {
+		docIDs, err := s.search.SearchDocuments(ctx, keyword, 100)
+		if err == nil && len(docIDs) > 0 {
+			for _, docID := range docIDs {
+				data, err := s.redis.Get(ctx, "doc:"+docID).Result()
+				if err != nil {
+					continue
+				}
+				var doc Document
+				if err := json.Unmarshal([]byte(data), &doc); err != nil {
+					continue
+				}
+				docs = append(docs, doc)
+			}
+		} else {
+			docs = s.getDocsByStringMatch(ctx, keyword)
+		}
+	} else {
+		docs = s.getDocsByStringMatch(ctx, keyword)
+	}
+
+	total := len(docs)
+	start := (page - 1) * pageSize
+	if start > total {
+		start = total
+	}
+	end := start + pageSize
+	if end > total {
+		end = total
+	}
+
+	paginated := docs[start:end]
+
+	return s.respondJSON(w, 200, "success", map[string]interface{}{
+		"data":       paginated,
+		"page":       page,
+		"page_size":  pageSize,
+		"total":      total,
+		"total_page": (total + pageSize - 1) / pageSize,
+	})
+}
+
+// getDocsByStringMatch is the fallback search method
+func (s *Service) getDocsByStringMatch(ctx context.Context, keyword string) []Document {
 	keys, err := s.redis.Keys(ctx, "doc:*").Result()
 	if err != nil {
-		return err
+		return nil
 	}
 
 	var docs []Document
@@ -204,10 +395,11 @@ func (s *Service) ListDocuments(w http.ResponseWriter, r *http.Request) error {
 		if err := json.Unmarshal([]byte(data), &doc); err != nil {
 			continue
 		}
-		docs = append(docs, doc)
+		if documentMatchesKeyword(doc, keyword) {
+			docs = append(docs, doc)
+		}
 	}
-
-	return s.respondJSON(w, 200, "success", docs)
+	return docs
 }
 
 func (s *Service) CreateDocument(w http.ResponseWriter, r *http.Request) error {
@@ -248,6 +440,13 @@ func (s *Service) CreateDocument(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
+	// Index to Milvus
+	if s.search != nil {
+		if err := s.search.IndexDocument(ctx, doc); err != nil {
+			fmt.Printf("⚠️  Failed to index document to Milvus: %v\n", err)
+		}
+	}
+
 	// Audit log
 	s.addAuditLog(ctx, "doc_created", req.ID, "created document: "+req.Title)
 
@@ -271,6 +470,13 @@ func (s *Service) DeleteDocument(w http.ResponseWriter, r *http.Request) error {
 	err := s.redis.Del(ctx, "doc:"+req.ID).Err()
 	if err != nil {
 		return err
+	}
+
+	// Delete from Milvus
+	if s.search != nil {
+		if err := s.search.DeleteDocument(ctx, req.ID); err != nil {
+			fmt.Printf("⚠️  Failed to delete document from Milvus: %v\n", err)
+		}
 	}
 
 	// Audit log
@@ -426,7 +632,7 @@ func (s *Service) addAuditLog(ctx context.Context, action, target, message strin
 	if err != nil {
 		return err
 	}
-	return s.redis.LPush(ctx, "audit:logs", string(data)).Err()
+	return s.redis.LPush(ctx, auditLogsKey, string(data)).Err()
 }
 
 func (s *Service) GetAuditLogs(w http.ResponseWriter, r *http.Request) error {
@@ -439,13 +645,13 @@ func (s *Service) GetAuditLogs(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	// Get logs from Redis
-	count, err := s.redis.LLen(ctx, "audit:logs").Result()
+	count, err := s.redis.LLen(ctx, auditLogsKey).Result()
 	if err != nil {
 		return err
 	}
 
 	// Fetch logs (newest first, limited)
-	logStrs, err := s.redis.LRange(ctx, "audit:logs", 0, int64(limit-1)).Result()
+	logStrs, err := s.redis.LRange(ctx, auditLogsKey, 0, int64(limit-1)).Result()
 	if err != nil {
 		return err
 	}
